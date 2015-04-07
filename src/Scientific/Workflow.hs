@@ -2,7 +2,7 @@ module Scientific.Workflow
     ( module Scientific.Workflow.Types
     , module Scientific.Workflow.Builder
     , module Scientific.Workflow.Builder.TH
-    , module Scientific.Workflow.Serialization.JSON
+    , module Scientific.Workflow.Serialization.Yaml
     , runWorkflow
     , mapA
     ) where
@@ -15,7 +15,7 @@ import Shelly (mkdir_p, shelly, fromText)
 import Scientific.Workflow.Builder
 import Scientific.Workflow.Builder.TH
 import Scientific.Workflow.Types
-import Scientific.Workflow.Serialization.JSON
+import Scientific.Workflow.Serialization.Yaml
 
 runWorkflow :: SourceProc b -> WorkflowOpt -> IO b
 runWorkflow nd opt = do

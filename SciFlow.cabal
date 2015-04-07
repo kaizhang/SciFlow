@@ -22,8 +22,8 @@ library
     Scientific.Workflow.Builder
     Scientific.Workflow.Builder.TH
     Scientific.Workflow.Serialization
-    Scientific.Workflow.Serialization.JSON
     Scientific.Workflow.Serialization.Show
+    Scientific.Workflow.Serialization.Yaml
 
 --  other-modules:       
 

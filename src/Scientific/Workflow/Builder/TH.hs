@@ -6,29 +6,27 @@ import Language.Haskell.TH
 
 import Control.Arrow ((>>>))
 import Control.Monad.State
-import qualified Data.Text as T
 import qualified Data.HashMap.Strict as M
 
-import Control.Arrow (Kleisli)
-import Control.Monad.Reader (ReaderT, lift, reader, (>=>))
 import Scientific.Workflow.Types
-import Scientific.Workflow.Serialization
 import Scientific.Workflow.Builder
 
-mkWorkflow :: Builder () -> Q Exp
-mkWorkflow st = expand s m
+mkWorkflow :: String -> Builder () -> Q [Dec]
+mkWorkflow name st = do
+    nodeDec <- mkNodesTH nd
+    wfDec <- [d| $(varP $ mkName name) = $(expand s m) |]
+    return $ nodeDec ++ wfDec
   where
     builder = execState st $ B [] []
     s = M.lookupDefault undefined (head $ leaves $ fromUnits $ snd $ unzip $ _links builder) m
     m = M.fromList $ _links builder
-    nd = map (\(l,_,_) -> l) $ _nodes builder
+    nd = map (\(a,b,_) -> (a,b)) $ _nodes builder
 
-mkNodesTH :: Builder () -> Q [Dec]
-mkNodesTH st = do d <- mapM f nodes
-                  return $ concat d
+mkNodesTH :: [(String, String)] -> Q [Dec]
+mkNodesTH nodes = do d <- mapM f nodes
+                     return $ concat d
   where
     f (l, ar) = [d| $(varP $ mkName l) = proc l $(varE $ mkName ar) |]
-    nodes = map (\(a,b,_) -> (a,b)) $ _nodes $ execState st $ B [] []
 
 expand :: Unit -> M.HashMap String Unit -> Q Exp
 expand (Link a b) m = [| $(expandA) >>> $(varE b') |]
