@@ -2,7 +2,7 @@ module Scientific.Workflow.Types where
 
 import qualified Control.Category as C
 import Control.Arrow (Kleisli(..), Arrow(..), first, second)
-import Control.Monad.Reader (ReaderT, lift, reader, (>=>))
+import Control.Monad.Reader (ReaderT, lift, reader, (>=>), MonadTrans)
 import qualified Data.ByteString as B
 import Data.Default.Class
 import qualified Data.Text as T
@@ -26,23 +26,27 @@ instance Monad m => Arrow (Proc m) where
 type Label m l o = (l -> m (Maybe o), l -> o -> m ())
 
 -- | Turn a Kleisli arrow into a labeled arrow
-label :: Monad m => Label m l b -> l -> Kleisli m a b -> Proc m a b
+label :: (MonadTrans t, Monad m, Monad (t m))
+      => Label (t m) l b
+      -> l
+      -> Kleisli m a b
+      -> Proc (t m) a b
 label (pre, suc) l (Kleisli f) = Proc $ \x -> do
     d <- pre l
     v <- case d of
-        Nothing -> f x
+        Nothing -> lift $ f x
         Just v -> return v
     suc l v
     return v
 
 type IOProc = Proc (ReaderT Config IO)
 
-type Actor = Kleisli (ReaderT Config IO)
+type Actor = Kleisli IO
 
 -- | Source Proc produce an output without taking inputs
 type SourceProc i = IOProc () i
 
-proc :: Serializable b => String -> Kleisli (ReaderT Config IO) a b -> IOProc a b
+proc :: Serializable b => String -> Kleisli IO a b -> IOProc a b
 proc = label (recover, save)
 
 source :: Serializable o => String -> o -> SourceProc o
@@ -82,5 +86,5 @@ data WorkflowOpt = WorkflowOpt
 
 instance Default WorkflowOpt where
     def = WorkflowOpt
-        { _logDir = "workflow_log/"
+        { _logDir = "wfCache/"
         }

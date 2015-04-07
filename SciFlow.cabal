@@ -37,7 +37,6 @@ library
     , text
     , template-haskell
     , unordered-containers >=0.2 && <0.3
-    , void
     , yaml
 
   hs-source-dirs:      src
