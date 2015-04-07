@@ -1,6 +1,7 @@
 module Scientific.Workflow.Types where
 
-import Control.Arrow (runKleisli, Kleisli(..))
+import qualified Control.Category as C
+import Control.Arrow (Kleisli(..), Arrow(..), first, second)
 import Control.Monad.Reader (ReaderT, lift, reader, (>=>))
 import qualified Data.ByteString as B
 import Data.Default.Class
@@ -9,28 +10,48 @@ import Shelly (shelly, test_f, fromText)
 
 import Scientific.Workflow.Serialization (Serializable(..))
 
-data Node a b = Node
-    { runNode :: a -> ReaderT Config IO b
-    }
+-- | labeled Arrow
+newtype Proc m a b = Proc { runProc :: a -> m b }
 
-type SourceNode i = Node () i
+instance Monad m => C.Category (Proc m) where
+    id = Proc return
+    (Proc f) . (Proc g) = Proc $ g >=> f
 
-source :: o -> SourceNode o
-source x = Node $ const $ return x
+instance Monad m => Arrow (Proc m) where
+    arr f = Proc (return . f)
+    first (Proc f) = Proc (\ ~(b,d) -> f b >>= \c -> return (c,d))
+    second (Proc f) = Proc (\ ~(d,b) -> f b >>= \c -> return (d,c))
 
-node :: Serializable b => String -> Kleisli IO a b -> Node a b
-node label actor = Node $ \x -> do
-    stored <- recover label
-    case stored of
-        Nothing -> do v <- lift $ runKleisli actor x
-                      save label v
-                      return v
+-- | Label is a pair of side effects
+type Label m l o = (l -> m (Maybe o), l -> o -> m ())
+
+-- | Turn a Kleisli arrow into a labeled arrow
+label :: Monad m => Label m l b -> l -> Kleisli m a b -> Proc m a b
+label (pre, suc) l (Kleisli f) = Proc $ \x -> do
+    d <- pre l
+    v <- case d of
+        Nothing -> f x
         Just v -> return v
+    suc l v
+    return v
+
+type IOProc = Proc (ReaderT Config IO)
+
+type Actor = Kleisli (ReaderT Config IO)
+
+-- | Source Proc produce an output without taking inputs
+type SourceProc i = IOProc () i
+
+proc :: Serializable b => String -> Kleisli (ReaderT Config IO) a b -> IOProc a b
+proc = label (recover, save)
+
+source :: Serializable o => String -> o -> SourceProc o
+source l x = proc l $ arr $ const x
 
 recover :: Serializable a => String -> ReaderT Config IO (Maybe a)
-recover label = do
+recover l = do
     dir <- reader _baseDir
-    let file = dir ++ label
+    let file = dir ++ l
     exist <- lift $ fileExist file
     if exist
        then do c <- lift $ B.readFile file
@@ -38,18 +59,15 @@ recover label = do
        else return Nothing
 
 save :: Serializable a => String -> a -> ReaderT Config IO ()
-save label x = do
+save l x = do
     dir <- reader _baseDir
-    lift $ B.writeFile (dir++label) $ serialize x
+    lift $ B.writeFile (dir++l) $ serialize x
 
 fileExist :: FilePath -> IO Bool
 fileExist x = shelly $ test_f $ fromText $ T.pack x
 
-(~>) :: Node a b -> Node b c -> Node a c
-(~>) (Node f) (Node g) = Node $ f >=> g
-
-m2 :: Node () b -> Node () d -> Node () (b,d)
-m2 (Node f) (Node g) = Node $ \_ -> do
+m2 :: SourceProc a -> SourceProc b -> SourceProc (a,b)
+m2 (Proc f) (Proc g) = Proc $ \_ -> do
     a <- f ()
     b <- g ()
     return (a,b)
