@@ -36,7 +36,7 @@ expand (Link a b) m = [| $(expandA) >>> $(varE b') |]
     expandA = case M.lookup a m of
         Nothing -> varE a'
         Just u -> expand u m
-expand (Link2 (a,b) c) m = [| m2 $(expandA) $(expandB) >>> $(varE c') |]
+expand (Link2 (a,b) c) m = [| zipS $(expandA) $(expandB) >>> $(varE c') |]
   where
     a' = mkName a
     b' = mkName b

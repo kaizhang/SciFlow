@@ -11,16 +11,16 @@ import Shelly (shelly, test_f, fromText)
 import Scientific.Workflow.Serialization (Serializable(..))
 
 -- | labeled Arrow
-newtype Proc m a b = Proc { runProc :: a -> m b }
+newtype Processor m a b = Processor { runProcessor :: a -> m b }
 
-instance Monad m => C.Category (Proc m) where
-    id = Proc return
-    (Proc f) . (Proc g) = Proc $ g >=> f
+instance Monad m => C.Category (Processor m) where
+    id = Processor return
+    (Processor f) . (Processor g) = Processor $ g >=> f
 
-instance Monad m => Arrow (Proc m) where
-    arr f = Proc (return . f)
-    first (Proc f) = Proc (\ ~(b,d) -> f b >>= \c -> return (c,d))
-    second (Proc f) = Proc (\ ~(d,b) -> f b >>= \c -> return (d,c))
+instance Monad m => Arrow (Processor m) where
+    arr f = Processor (return . f)
+    first (Processor f) = Processor (\ ~(b,d) -> f b >>= \c -> return (c,d))
+    second (Processor f) = Processor (\ ~(d,b) -> f b >>= \c -> return (d,c))
 
 -- | Label is a pair of side effects
 type Label m l o = (l -> m (Maybe o), l -> o -> m ())
@@ -30,8 +30,8 @@ label :: (MonadTrans t, Monad m, Monad (t m))
       => Label (t m) l b
       -> l
       -> Kleisli m a b
-      -> Proc (t m) a b
-label (pre, suc) l (Kleisli f) = Proc $ \x -> do
+      -> Processor (t m) a b
+label (pre, suc) l (Kleisli f) = Processor $ \x -> do
     d <- pre l
     v <- case d of
         Nothing -> lift $ f x
@@ -39,17 +39,20 @@ label (pre, suc) l (Kleisli f) = Proc $ \x -> do
     suc l v
     return v
 
-type IOProc = Proc (ReaderT Config IO)
+type IOProcessor = Processor (ReaderT Config IO)
 
 type Actor = Kleisli IO
 
--- | Source Proc produce an output without taking inputs
-type SourceProc i = IOProc () i
+actor :: (a -> IO b) -> Actor a b
+actor = Kleisli
 
-proc :: Serializable b => String -> Kleisli IO a b -> IOProc a b
+-- | Source produce an output without taking inputs
+type Source i = IOProcessor () i
+
+proc :: Serializable b => String -> Kleisli IO a b -> IOProcessor a b
 proc = label (recover, save)
 
-source :: Serializable o => String -> o -> SourceProc o
+source :: Serializable o => String -> o -> Source o
 source l x = proc l $ arr $ const x
 
 recover :: Serializable a => String -> ReaderT Config IO (Maybe a)
@@ -70,11 +73,19 @@ save l x = do
 fileExist :: FilePath -> IO Bool
 fileExist x = shelly $ test_f $ fromText $ T.pack x
 
-m2 :: SourceProc a -> SourceProc b -> SourceProc (a,b)
-m2 (Proc f) (Proc g) = Proc $ \_ -> do
+-- | zip two sources
+zipS :: Source a -> Source b -> Source (a,b)
+zipS (Processor f) (Processor g) = Processor $ \_ -> do
     a <- f ()
     b <- g ()
     return (a,b)
+
+zipS3 :: Source a -> Source b -> Source c -> Source (a,b,c)
+zipS3 (Processor f) (Processor g) (Processor h) = Processor $ \_ -> do
+    a <- f ()
+    b <- g ()
+    c <- h ()
+    return (a,b,c)
 
 data Config = Config
     { _baseDir :: !FilePath

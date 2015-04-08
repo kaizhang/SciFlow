@@ -17,10 +17,10 @@ import Scientific.Workflow.Builder.TH
 import Scientific.Workflow.Types
 import Scientific.Workflow.Serialization.Yaml
 
-runWorkflow :: SourceProc b -> WorkflowOpt -> IO b
+runWorkflow :: Source b -> WorkflowOpt -> IO b
 runWorkflow nd opt = do
     shelly $ mkdir_p $ fromText $ T.pack $ _logDir opt
-    runReaderT (runProc nd ()) $ Config $ _logDir opt
+    runReaderT (runProcessor nd ()) $ Config $ _logDir opt
 
 mapA :: Monad m => Kleisli m a b -> Kleisli m [a] [b]
 mapA (Kleisli f) = Kleisli $ mapM f
