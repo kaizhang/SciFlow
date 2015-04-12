@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 module Scientific.Workflow.Types where
 
 import qualified Control.Category as C
@@ -9,6 +10,9 @@ import qualified Data.Text as T
 import Shelly (shelly, test_f, fromText)
 
 import Scientific.Workflow.Serialization (Serializable(..))
+
+data Workflow where
+    Workflow :: IOProcessor () b -> Workflow
 
 -- | labeled Arrow
 newtype Processor m a b = Processor { runProcessor :: a -> m b }

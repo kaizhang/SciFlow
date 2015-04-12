@@ -14,7 +14,7 @@ import Scientific.Workflow.Builder
 mkWorkflow :: String -> Builder () -> Q [Dec]
 mkWorkflow name st = do
     nodeDec <- declareNodesTH nd
-    wfDec <- [d| $(varP $ mkName name) = $(fmap ListE $ mapM (`expand` m) endNodes) |]
+    wfDec <- [d| $(varP $ mkName name) = $(fmap ListE $ mapM (`expand'` m) endNodes) |]
     return $ nodeDec ++ wfDec
   where
     builder = execState st $ B [] []
@@ -27,6 +27,9 @@ declareNodesTH nodes = do d <- mapM f nodes
                           return $ concat d
   where
     f (l, ar) = [d| $(varP $ mkName l) = proc l $(varE $ mkName ar) |]
+
+expand' :: Unit -> M.HashMap String Unit -> Q Exp
+expand' l m = [| Workflow $(expand l m) |]
 
 expand :: Unit -> M.HashMap String Unit -> Q Exp
 expand (Link a b) m = [| $(expandA) >>> $(varE b') |]
