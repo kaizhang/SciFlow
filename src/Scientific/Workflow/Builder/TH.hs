@@ -13,18 +13,18 @@ import Scientific.Workflow.Builder
 
 mkWorkflow :: String -> Builder () -> Q [Dec]
 mkWorkflow name st = do
-    nodeDec <- mkNodesTH nd
-    wfDec <- [d| $(varP $ mkName name) = $(expand s m) |]
+    nodeDec <- declareNodesTH nd
+    wfDec <- [d| $(varP $ mkName name) = $(fmap ListE $ mapM (`expand` m) endNodes) |]
     return $ nodeDec ++ wfDec
   where
     builder = execState st $ B [] []
-    s = M.lookupDefault undefined (head $ leaves $ fromUnits $ snd $ unzip $ _links builder) m
+    endNodes = map (\x -> M.lookupDefault undefined x m) . leaves . fromUnits . snd . unzip . _links $ builder
     m = M.fromList $ _links builder
     nd = map (\(a,b,_) -> (a,b)) $ _nodes builder
 
-mkNodesTH :: [(String, String)] -> Q [Dec]
-mkNodesTH nodes = do d <- mapM f nodes
-                     return $ concat d
+declareNodesTH :: [(String, String)] -> Q [Dec]
+declareNodesTH nodes = do d <- mapM f nodes
+                          return $ concat d
   where
     f (l, ar) = [d| $(varP $ mkName l) = proc l $(varE $ mkName ar) |]
 
