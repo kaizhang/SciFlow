@@ -6,9 +6,10 @@ import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
 import Data.Tuple (swap)
 
-data Unit = Link String String
-          | Link2 (String,String) String
-          | Link3 (String,String,String) String
+data Unit = S String
+          | L String String
+          | L2 (String,String) String
+          | L3 (String,String,String) String
 
 data B = B
     { _nodes :: [(String, String, T.Text)]
@@ -21,13 +22,16 @@ node :: String -> String -> T.Text -> Builder ()
 node l f anno = modify $ \s -> s{_nodes = (l,f,anno) : _nodes s}
 
 link :: String -> String -> Builder ()
-link a b = modify $ \s -> s{_links = (b, Link a b) : _links s}
+link a t = modify $ \s -> s{_links = (t, L a t) : _links s}
 
 (~>) :: String -> String -> Builder ()
 (~>) = link
 
 link2 :: (String, String) -> String -> Builder ()
-link2 (a,b) c = modify $ \s -> s{_links = (c, Link2 (a,b) c) : _links s}
+link2 (a,b) t = modify $ \s -> s{_links = (t, L2 (a,b) t) : _links s}
+
+link3 :: (String, String, String) -> String -> Builder ()
+link3 (a,b,c) t = modify $ \s -> s{_links = (t, L3 (a,b,c) t) : _links s}
 
 data Graph = Graph
     { _children :: M.HashMap String [String]
@@ -52,6 +56,7 @@ fromUnits us = Graph cs ps vs'
     vs' = concat vs
     es' = concat es
     (vs,es) = unzip $ map f us
-    f (Link a b) = ([a,b], [(a,b)])
-    f (Link2 (a,b) c) = ([a,b,c], [(a,c),(b,c)])
-    f (Link3 (a,b,c) d) = ([a,b,c,d], [(a,d),(b,d),(c,d)])
+    f (S a) = ([a], [])
+    f (L a t) = ([a,t], [(a,t)])
+    f (L2 (a,b) t) = ([a,b,t], [(a,t),(b,t)])
+    f (L3 (a,b,c) t) = ([a,b,c,t], [(a,t),(b,t),(c,t)])

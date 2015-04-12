@@ -13,8 +13,8 @@ import Scientific.Workflow.Builder
 
 mkWorkflow :: String -> Builder () -> Q [Dec]
 mkWorkflow name st = do
-    nodeDec <- declareNodesTH nd
-    wfDec <- [d| $(varP $ mkName name) = $(fmap ListE $ mapM (`expand'` m) endNodes) |]
+    nodeDec <- declareNodes nd
+    wfDec <- [d| $(varP $ mkName name) = $(fmap ListE $ mapM (`linkNodes` m) endNodes) |]
     return $ nodeDec ++ wfDec
   where
     builder = execState st $ B [] []
@@ -22,33 +22,24 @@ mkWorkflow name st = do
     m = M.fromList $ _links builder
     nd = map (\(a,b,_) -> (a,b)) $ _nodes builder
 
-declareNodesTH :: [(String, String)] -> Q [Dec]
-declareNodesTH nodes = do d <- mapM f nodes
-                          return $ concat d
+declareNodes :: [(String, String)] -> Q [Dec]
+declareNodes nodes = do d <- mapM f nodes
+                        return $ concat d
   where
     f (l, ar) = [d| $(varP $ mkName l) = proc l $(varE $ mkName ar) |]
+{-# INLINE declareNodes #-}
 
-expand' :: Unit -> M.HashMap String Unit -> Q Exp
-expand' l m = [| Workflow $(expand l m) |]
-
-expand :: Unit -> M.HashMap String Unit -> Q Exp
-expand (Link a b) m = [| $(expandA) >>> $(varE b') |]
+linkNodes :: Unit -> M.HashMap String Unit -> Q Exp
+linkNodes nd m = [| Workflow $(go nd) |]
   where
-    a' = mkName a
-    b' = mkName b
-    expandA = case M.lookup a m of
-        Nothing -> varE a'
-        Just u -> expand u m
-expand (Link2 (a,b) c) m = [| zipS $(expandA) $(expandB) >>> $(varE c') |]
-  where
-    a' = mkName a
-    b' = mkName b
-    c' = mkName c
-    expandA = case M.lookup a m of
-        Nothing -> varE a'
-        Just u -> expand u m
-    expandB = case M.lookup b m of
-        Nothing -> varE b'
-        Just u -> expand u m
-expand _ _ = error "not implemented"
-
+    lookup' x = M.lookupDefault (S x) x m
+    go (S a)          = varE $ mkName a
+    go (L a t)        = [| $(go $ lookup' a) >>> $(go $ S t) |]
+    go (L2 (a,b) t)   = [| zipS  $(go $ lookup' a) 
+                                 $(go $ lookup' b)
+                             >>> $(go $ S t) |]
+    go (L3 (a,b,c) t) = [| zipS3 $(go $ lookup' a)
+                                 $(go $ lookup' b)
+                                 $(go $ lookup' c)
+                             >>> $(go $ S t) |]
+{-# INLINE linkNodes #-}
