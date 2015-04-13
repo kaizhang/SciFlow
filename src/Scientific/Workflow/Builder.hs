@@ -21,6 +21,9 @@ type Builder = State B
 node :: String -> String -> T.Text -> Builder ()
 node l f anno = modify $ \s -> s{_nodes = (l,f,anno) : _nodes s}
 
+singleton :: String -> Builder ()
+singleton t = modify $ \s -> s{_links = (t, S t) : _links s}
+
 link :: String -> String -> Builder ()
 link a t = modify $ \s -> s{_links = (t, L a t) : _links s}
 
