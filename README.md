@@ -32,7 +32,7 @@ builder :: Builder ()
 builder = do
     node "id000" "input" "this is input"
     node "id001" "plus1" "add 1 to the input"
-    node "id002" "mul2" "doulbe the input"
+    node "id002" "mul2" "double the input"
     node "id003" "combine" "combine two input"
     
     "id000" ~> "id001"
