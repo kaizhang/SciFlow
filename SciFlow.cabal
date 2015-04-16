@@ -2,14 +2,23 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                SciFlow
-version:             0.2.0
--- synopsis:            
--- description:         
+version:             0.1.0
+synopsis:            Scientific workflow management system
+description:         SciFlow is to help programmers design complex workflows
+                     with ease.
+                     .
+                     Feature includes: 
+                     .
+                        1. Use "labeled" arrows to connect individual steps
+                           and cache computational results.
+                        2. Use monad and template haskell to automate the process
+                           of building DAGs.
+
 license:             MIT
 license-file:        LICENSE
 author:              Kai Zhang
 maintainer:          kai@kzhang.org
--- copyright:           
+copyright:           (c) 2015 Kai Zhang
 category:            Control
 build-type:          Simple
 -- extra-source-files:  
@@ -29,15 +38,19 @@ library
 
   -- other-extensions:    
   build-depends:       
-      base >=4.7 && <4.8
+      base >=4.0 && <5.0
     , bytestring
     , data-default-class
     , mtl
     , shelly
     , text
     , template-haskell
-    , unordered-containers >=0.2 && <0.3
+    , unordered-containers >=0.2
     , yaml
 
   hs-source-dirs:      src
   default-language:    Haskell2010
+
+source-repository  head
+  type: git
+  location: https://github.com/kaizhang/SciFlow.git
