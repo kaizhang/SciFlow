@@ -18,7 +18,7 @@ mkWorkflow name st = do
     return $ nodeDec ++ wfDec
   where
     builder = execState st $ B [] []
-    endNodes = map (\x -> M.lookupDefault undefined x m) . leaves . fromUnits . snd . unzip . _links $ builder
+    endNodes = map (\x -> M.lookupDefault undefined x m) . leaves . fromFactors . snd . unzip . _links $ builder
     m = M.fromList $ _links builder
     nd = map (\(a,b,_) -> (a,b)) $ _nodes builder
 
@@ -29,7 +29,7 @@ declareNodes nodes = do d <- mapM f nodes
     f (l, ar) = [d| $(varP $ mkName l) = proc l $(varE $ mkName ar) |]
 {-# INLINE declareNodes #-}
 
-linkNodes :: Unit -> M.HashMap String Unit -> Q Exp
+linkNodes :: Factor -> M.HashMap String Factor -> Q Exp
 linkNodes nd m = [| Workflow $(go nd) |]
   where
     lookup' x = M.lookupDefault (S x) x m
