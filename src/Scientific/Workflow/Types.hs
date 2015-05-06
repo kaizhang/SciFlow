@@ -91,6 +91,63 @@ zipS3 (Processor f) (Processor g) (Processor h) = Processor $ \_ -> do
     c <- h ()
     return (a,b,c)
 
+zipS4 :: Source a
+      -> Source b
+      -> Source c
+      -> Source d
+      -> Source (a,b,c,d)
+zipS4 (Processor f)
+      (Processor g)
+      (Processor h)
+      (Processor i)
+      = Processor $ \_ -> do
+          a <- f ()
+          b <- g ()
+          c <- h ()
+          d <- i ()
+          return (a,b,c,d)
+
+zipS5 :: Source a
+      -> Source b
+      -> Source c
+      -> Source d
+      -> Source e
+      -> Source (a,b,c,d,e)
+zipS5 (Processor f)
+      (Processor g)
+      (Processor h)
+      (Processor i)
+      (Processor j)
+      = Processor $ \_ -> do
+          a <- f ()
+          b <- g ()
+          c <- h ()
+          d <- i ()
+          e <- j ()
+          return (a,b,c,d,e)
+
+zipS6 :: Source a
+      -> Source b
+      -> Source c
+      -> Source d
+      -> Source e
+      -> Source f
+      -> Source (a,b,c,d,e,f)
+zipS6 (Processor f)
+      (Processor g)
+      (Processor h)
+      (Processor i)
+      (Processor j)
+      (Processor k)
+      = Processor $ \_ -> do
+          a <- f ()
+          b <- g ()
+          c <- h ()
+          d <- i ()
+          e <- j ()
+          f <- k ()
+          return (a,b,c,d,e,f)
+
 data Config = Config
     { _baseDir :: !FilePath
     }

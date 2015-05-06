@@ -33,13 +33,36 @@ linkNodes :: Factor -> M.HashMap String Factor -> Q Exp
 linkNodes nd m = [| Workflow $(go nd) |]
   where
     lookup' x = M.lookupDefault (S x) x m
-    go (S a)          = varE $ mkName a
-    go (L a t)        = [| $(go $ lookup' a) >>> $(go $ S t) |]
-    go (L2 (a,b) t)   = [| zipS  $(go $ lookup' a) 
-                                 $(go $ lookup' b)
-                             >>> $(go $ S t) |]
-    go (L3 (a,b,c) t) = [| zipS3 $(go $ lookup' a)
-                                 $(go $ lookup' b)
-                                 $(go $ lookup' c)
-                             >>> $(go $ S t) |]
+    go (S a) = varE $ mkName a
+    go (L a t) = [| $(go $ lookup' a) >>> $(go $ S t) |]
+    go (L2 (a,b) t) =
+        [| zipS  $(go $ lookup' a) 
+                 $(go $ lookup' b)
+             >>> $(go $ S t) |]
+    go (L3 (a,b,c) t) =
+        [| zipS3 $(go $ lookup' a)
+                 $(go $ lookup' b)
+                 $(go $ lookup' c)
+             >>> $(go $ S t) |]
+    go (L4 (a,b,c,d) t) =
+        [| zipS4 $(go $ lookup' a)
+                 $(go $ lookup' b)
+                 $(go $ lookup' c)
+                 $(go $ lookup' d)
+             >>> $(go $ S t) |]
+    go (L5 (a,b,c,d,f) t) =
+        [| zipS5 $(go $ lookup' a)
+                 $(go $ lookup' b)
+                 $(go $ lookup' c)
+                 $(go $ lookup' d)
+                 $(go $ lookup' f)
+             >>> $(go $ S t) |]
+    go (L6 (a,b,c,d,f,e) t) =
+        [| zipS6 $(go $ lookup' a)
+                 $(go $ lookup' b)
+                 $(go $ lookup' c)
+                 $(go $ lookup' d)
+                 $(go $ lookup' f)
+                 $(go $ lookup' e)
+             >>> $(go $ S t) |]
 {-# INLINE linkNodes #-}

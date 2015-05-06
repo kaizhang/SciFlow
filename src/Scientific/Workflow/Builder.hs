@@ -11,6 +11,9 @@ data Factor = S String
             | L String String
             | L2 (String,String) String
             | L3 (String,String,String) String
+            | L4 (String,String,String,String) String
+            | L5 (String,String,String,String,String) String
+            | L6 (String,String,String,String,String,String) String
 
 data B = B
     { _nodes :: [(String, String, T.Text)]
@@ -29,6 +32,9 @@ link [] t = singleton t
 link [a] t = link1 a t
 link [a,b] t = link2 (a,b) t
 link [a,b,c] t = link3 (a,b,c) t
+link [a,b,c,d] t = link4 (a,b,c,d) t
+link [a,b,c,d,e] t = link5 (a,b,c,d,e) t
+link [a,b,c,d,e,f] t = link6 (a,b,c,d,e,f) t
 link _ _ = error "I can't have so many links, yet!"
 
 -- | (~>) = link.
@@ -56,6 +62,15 @@ link2 (a,b) t = modify $ \s -> s{_links = (t, L2 (a,b) t) : _links s}
 -- | tree-to-one link
 link3 :: (String, String, String) -> String -> Builder ()
 link3 (a,b,c) t = modify $ \s -> s{_links = (t, L3 (a,b,c) t) : _links s}
+
+link4 :: (String, String, String, String) -> String -> Builder ()
+link4 (a,b,c,d) t = modify $ \s -> s{_links = (t, L4 (a,b,c,d) t) : _links s}
+
+link5 :: (String, String, String, String, String) -> String -> Builder ()
+link5 (a,b,c,d,e) t = modify $ \s -> s{_links = (t, L5 (a,b,c,d,e) t) : _links s}
+
+link6 :: (String, String, String, String, String, String) -> String -> Builder ()
+link6 (a,b,c,d,e,f) t = modify $ \s -> s{_links = (t, L6 (a,b,c,d,e,f) t) : _links s}
 
 
 data Graph = Graph
@@ -85,3 +100,6 @@ fromFactors us = Graph cs ps vs'
     f (L a t) = ([a,t], [(a,t)])
     f (L2 (a,b) t) = ([a,b,t], [(a,t),(b,t)])
     f (L3 (a,b,c) t) = ([a,b,c,t], [(a,t),(b,t),(c,t)])
+    f (L4 (a,b,c,d) t) = ([a,b,c,d,t], [(a,t),(b,t),(c,t),(d,t)])
+    f (L5 (a,b,c,d,e) t) = ([a,b,c,d,e,t], [(a,t),(b,t),(c,t),(d,t),(e,t)])
+    f (L6 (a,b,c,d,e,f) t) = ([a,b,c,d,e,f,t], [(a,t),(b,t),(c,t),(d,t),(e,t),(f,t)])
