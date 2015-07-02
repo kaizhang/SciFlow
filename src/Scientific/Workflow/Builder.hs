@@ -6,7 +6,10 @@ import Control.Monad.State.Lazy (State, modify, foldM_)
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
 import Data.Tuple (swap)
+import Language.Haskell.TH
 
+-- | Factors are small subgraphs/units of workflows. Each factor is associated
+-- with multiple inputs and a single output
 data Factor = S String
             | L String String
             | L2 (String,String) String
@@ -15,16 +18,27 @@ data Factor = S String
             | L5 (String,String,String,String,String) String
             | L6 (String,String,String,String,String,String) String
 
+-- | State of Builder Monad, storing workflow structure
 data B = B
-    { _nodes :: [(String, String, T.Text)]
+    { _nodes :: [(String, ExpQ, T.Text)]
     , _links :: [(String, Factor)]
     }
 
 type Builder = State B
 
+-- | Objects that can be converted to ExpQ
+class ToExpQ a where
+    toExpQ :: a -> ExpQ
+
+instance ToExpQ Name where
+    toExpQ = varE
+
+instance ToExpQ ExpQ where
+    toExpQ = id
+
 -- | Declare a computational node
-node :: String -> String -> T.Text -> Builder ()
-node l f anno = modify $ \s -> s{_nodes = (l,f,anno) : _nodes s}
+node :: ToExpQ a => String -> a -> T.Text -> Builder ()
+node l f anno = modify $ \s -> s{_nodes = (l, toExpQ f, anno) : _nodes s}
 
 -- | many-to-one generalized link function
 link :: [String] -> String -> Builder ()
@@ -45,7 +59,7 @@ link _ _ = error "I can't have so many links, yet!"
 singleton :: String -> Builder ()
 singleton t = modify $ \s -> s{_links = (t, S t) : _links s}
 
--- | Declare a path. 
+-- | Declare a path.
 path :: [String] -> Builder ()
 path ns = foldM_ f (head ns) $ tail ns
   where
@@ -95,11 +109,11 @@ fromFactors us = Graph cs ps vs'
     ps = M.fromListWith (++) $ map (second return . swap) es'
     vs' = concat vs
     es' = concat es
-    (vs,es) = unzip $ map f us
-    f (S a) = ([a], [])
-    f (L a t) = ([a,t], [(a,t)])
-    f (L2 (a,b) t) = ([a,b,t], [(a,t),(b,t)])
-    f (L3 (a,b,c) t) = ([a,b,c,t], [(a,t),(b,t),(c,t)])
-    f (L4 (a,b,c,d) t) = ([a,b,c,d,t], [(a,t),(b,t),(c,t),(d,t)])
-    f (L5 (a,b,c,d,e) t) = ([a,b,c,d,e,t], [(a,t),(b,t),(c,t),(d,t),(e,t)])
-    f (L6 (a,b,c,d,e,f) t) = ([a,b,c,d,e,f,t], [(a,t),(b,t),(c,t),(d,t),(e,t),(f,t)])
+    (vs,es) = unzip $ map fn us
+    fn (S a) = ([a], [])
+    fn (L a t) = ([a,t], [(a,t)])
+    fn (L2 (a,b) t) = ([a,b,t], [(a,t),(b,t)])
+    fn (L3 (a,b,c) t) = ([a,b,c,t], [(a,t),(b,t),(c,t)])
+    fn (L4 (a,b,c,d) t) = ([a,b,c,d,t], [(a,t),(b,t),(c,t),(d,t)])
+    fn (L5 (a,b,c,d,e) t) = ([a,b,c,d,e,t], [(a,t),(b,t),(c,t),(d,t),(e,t)])
+    fn (L6 (a,b,c,d,e,f) t) = ([a,b,c,d,e,f,t], [(a,t),(b,t),(c,t),(d,t),(e,t),(f,t)])
