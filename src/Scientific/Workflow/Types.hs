@@ -1,8 +1,11 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Scientific.Workflow.Types where
 
-import qualified Control.Category as C
+import Control.Applicative
 import Control.Arrow (Kleisli(..), Arrow(..), first, second)
+import qualified Control.Category as C
 import Control.Monad.Reader (ReaderT, lift, reader, (>=>), MonadTrans)
 import qualified Data.ByteString as B
 import Data.Default.Class
@@ -37,11 +40,13 @@ label :: (MonadTrans t, Monad m, Monad (t m))
       -> Processor (t m) a b
 label (pre, suc) l (Kleisli f) = Processor $ \x -> do
     d <- pre l
-    v <- case d of
-        Nothing -> lift $ f x
+    case d of
+        Nothing -> do
+            o <- lift $ f x
+            suc l o
+            return o
         Just v -> return v
-    suc l v
-    return v
+{-# INLINE label #-}
 
 type IOProcessor = Processor (ReaderT Config IO)
 
@@ -50,8 +55,18 @@ type Actor = Kleisli IO
 actor :: (a -> IO b) -> Actor a b
 actor = Kleisli
 
--- | Source produce an output without taking inputs
-type Source i = IOProcessor () i
+-- | Source produce an output without inputs
+type Source = IOProcessor ()
+
+instance Functor Source where
+    fmap f (Processor g) = Processor $ fmap f . g
+
+instance Applicative Source where
+    pure = Processor . const . return
+    Processor f <*> Processor g = Processor $ \x -> do
+        a <- f x
+        b <- g x
+        return $ a b
 
 proc :: Serializable b => String -> Kleisli IO a b -> IOProcessor a b
 proc = label (recover, save)
@@ -76,77 +91,6 @@ save l x = do
 
 fileExist :: FilePath -> IO Bool
 fileExist x = shelly $ test_f $ fromText $ T.pack x
-
--- | zip two sources
-zipS :: Source a -> Source b -> Source (a,b)
-zipS (Processor f) (Processor g) = Processor $ \_ -> do
-    a <- f ()
-    b <- g ()
-    return (a,b)
-
-zipS3 :: Source a -> Source b -> Source c -> Source (a,b,c)
-zipS3 (Processor f) (Processor g) (Processor h) = Processor $ \_ -> do
-    a <- f ()
-    b <- g ()
-    c <- h ()
-    return (a,b,c)
-
-zipS4 :: Source a
-      -> Source b
-      -> Source c
-      -> Source d
-      -> Source (a,b,c,d)
-zipS4 (Processor f)
-      (Processor g)
-      (Processor h)
-      (Processor i)
-      = Processor $ \_ -> do
-          a <- f ()
-          b <- g ()
-          c <- h ()
-          d <- i ()
-          return (a,b,c,d)
-
-zipS5 :: Source a
-      -> Source b
-      -> Source c
-      -> Source d
-      -> Source e
-      -> Source (a,b,c,d,e)
-zipS5 (Processor f)
-      (Processor g)
-      (Processor h)
-      (Processor i)
-      (Processor j)
-      = Processor $ \_ -> do
-          a <- f ()
-          b <- g ()
-          c <- h ()
-          d <- i ()
-          e <- j ()
-          return (a,b,c,d,e)
-
-zipS6 :: Source a
-      -> Source b
-      -> Source c
-      -> Source d
-      -> Source e
-      -> Source f
-      -> Source (a,b,c,d,e,f)
-zipS6 (Processor f)
-      (Processor g)
-      (Processor h)
-      (Processor i)
-      (Processor j)
-      (Processor k)
-      = Processor $ \_ -> do
-          a <- f ()
-          b <- g ()
-          c <- h ()
-          d <- i ()
-          e <- j ()
-          f <- k ()
-          return (a,b,c,d,e,f)
 
 data Config = Config
     { _baseDir :: !FilePath
