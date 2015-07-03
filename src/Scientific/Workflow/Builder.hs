@@ -1,12 +1,14 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Scientific.Workflow.Builder where
 
-import Control.Arrow (second)
-import Control.Monad.State.Lazy (State, modify, foldM_)
-import qualified Data.HashMap.Strict as M
-import qualified Data.Text as T
-import Data.Tuple (swap)
-import Language.Haskell.TH
+import           Control.Arrow             (second)
+import           Control.Monad.State.Lazy  (State, foldM_, modify)
+import qualified Data.HashMap.Strict       as M
+import qualified Data.Text                 as T
+import           Data.Tuple                (swap)
+import           Language.Haskell.TH
+
+import           Scientific.Workflow.Types
 
 -- | Factors are small subgraphs/units of workflows. Each factor is associated
 -- with multiple inputs and a single output
@@ -89,8 +91,8 @@ link6 (a,b,c,d,e,f) t = modify $ \s -> s{_links = (t, L6 (a,b,c,d,e,f) t) : _lin
 
 data Graph = Graph
     { _children :: M.HashMap String [String]
-    , _parents :: M.HashMap String [String]
-    , _vertice :: [String]
+    , _parents  :: M.HashMap String [String]
+    , _vertice  :: [ID]
     }
 
 children :: String -> Graph -> [String]

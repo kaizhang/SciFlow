@@ -7,63 +7,89 @@ import Language.Haskell.TH
 import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((>>>))
 import Control.Monad.State
+import Data.Default.Class
 import qualified Data.HashMap.Strict as M
 
 import Scientific.Workflow.Types
+import Scientific.Workflow.Utils (fileExist)
 import Scientific.Workflow.Builder
 
-mkWorkflow :: String -> Builder () -> Q [Dec]
-mkWorkflow name st = do
-    nodeDec <- declareNodes nd
-    wfDec <- [d| $(varP $ mkName name) = $(fmap ListE $ mapM (`linkNodes` m) endNodes) |]
+readWorkflowState :: WorkflowConfig -> [ID] -> IO WorkflowState
+readWorkflowState config nodes = (WorkflowState . M.fromList . zip nodes) <$>
+                              mapM (fileExist . (dir++)) nodes
+  where
+    dir = _baseDir config ++ "/" ++ _logDir config ++ "/"
+
+mkWorkflow :: String   -- ^ the name of workflow
+           -> WorkflowConfig
+           -> Builder ()
+           -> Q [Dec]
+mkWorkflow name config builder = do
+    st <- runIO $ readWorkflowState config $ fst $ unzip nd
+
+    nodeDec <- defineNodes nd   -- ^ define node functions
+
+    -- construct workflow
+    wfDec <- [d| $( varP $ mkName name ) = Workflow config $( fmap ListE $ mapM (linkFrom (_overwrite config) st table) leafNodes )
+             |]
+
     return $ nodeDec ++ wfDec
   where
-    builder = execState st $ B [] []
-    endNodes = map (\x -> M.lookupDefault undefined x m) . leaves . fromFactors . snd . unzip . _links $ builder
-    m = M.fromList $ _links builder
-    nd = map (\(a,b,_) -> (a,b)) $ _nodes builder
+    builderSt = execState builder $ B [] []
+    leafNodes = map (flip (M.lookupDefault undefined) table) . leaves .
+                fromFactors . snd . unzip . _links $ builderSt
+    table = M.fromList $ _links builderSt
+    nd = map (\(a,b,_) -> (a,b)) $ _nodes builderSt
 
-declareNodes :: [(String, ExpQ)] -> Q [Dec]
-declareNodes nodes = do d <- mapM f nodes
-                        return $ concat d
+defineNodes :: [(String, ExpQ)] -> Q [Dec]
+defineNodes nodes = fmap concat $ mapM f nodes
   where
     f (l, fn) = [d| $(varP $ mkName l) = proc l $(fn) |]
-{-# INLINE declareNodes #-}
+{-# INLINE defineNodes #-}
 
-linkNodes :: Factor -> M.HashMap String Factor -> Q Exp
-linkNodes nd m = [| Workflow $(go nd) |]
+-- | Start linking processors from a given node
+linkFrom :: Bool   -- ^ overwrite or not
+         -> WorkflowState
+         -> M.HashMap String Factor
+         -> Factor
+         -> Q Exp
+linkFrom overwrite st table nd = go nd
   where
-    lookup' x = M.lookupDefault (S x) x m
+    expand x = if nodeExist x
+                   then [| nullSource >>> $(go $ S x) |]
+                   else go $ M.lookupDefault (S x) x table
+    nodeExist x = not overwrite && M.lookupDefault False x (_nodeStatus st)
+
     go (S a) = varE $ mkName a
-    go (L a t) = [| $(go $ lookup' a) >>> $(go $ S t) |]
-    go (L2 (a,b) t) =
-        [| (,) <$> $(go $ lookup' a)
-               <*> $(go $ lookup' b)
-               >>> $(go $ S t) |]
-    go (L3 (a,b,c) t) =
-        [| (,,) <$> $(go $ lookup' a)
-                <*> $(go $ lookup' b)
-                <*> $(go $ lookup' c)
-                >>> $(go $ S t) |]
-    go (L4 (a,b,c,d) t) =
-        [| (,,,) <$> $(go $ lookup' a)
-                 <*> $(go $ lookup' b)
-                 <*> $(go $ lookup' c)
-                 <*> $(go $ lookup' d)
-                 >>> $(go $ S t) |]
-    go (L5 (a,b,c,d,f) t) =
-        [| (,,,,) <$> $(go $ lookup' a)
-                  <*> $(go $ lookup' b)
-                  <*> $(go $ lookup' c)
-                  <*> $(go $ lookup' d)
-                  <*> $(go $ lookup' f)
-                  >>> $(go $ S t) |]
-    go (L6 (a,b,c,d,f,e) t) =
-        [| (,,,,,) <$> $(go $ lookup' a)
-                   <*> $(go $ lookup' b)
-                   <*> $(go $ lookup' c)
-                   <*> $(go $ lookup' d)
-                   <*> $(go $ lookup' f)
-                   <*> $(go $ lookup' e)
-                   >>> $(go $ S t) |]
-{-# INLINE linkNodes #-}
+    go (L a t) = [| $(expand a) >>> $(go $ S t) |]
+    go (L2 (a,b) t) = [| (,)
+        <$> $(expand a)
+        <*> $(expand b)
+        >>> $(go $ S t) |]
+    go (L3 (a,b,c) t) = [| (,,)
+        <$> $(expand a)
+        <*> $(expand b)
+        <*> $(expand c)
+        >>> $(go $ S t) |]
+    go (L4 (a,b,c,d) t) = [| (,,,)
+        <$> $(expand a)
+        <*> $(expand b)
+        <*> $(expand c)
+        <*> $(expand d)
+        >>> $(go $ S t) |]
+    go (L5 (a,b,c,d,f) t) = [| (,,,,)
+        <$> $(expand a)
+        <*> $(expand b)
+        <*> $(expand c)
+        <*> $(expand d)
+        <*> $(expand f)
+        >>> $(go $ S t) |]
+    go (L6 (a,b,c,d,f,e) t) = [| (,,,,,)
+        <$> $(expand a)
+        <*> $(expand b)
+        <*> $(expand c)
+        <*> $(expand d)
+        <*> $(expand f)
+        <*> $(expand e)
+        >>> $(go $ S t) |]
+{-# INLINE linkFrom #-}

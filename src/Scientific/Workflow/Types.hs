@@ -1,21 +1,27 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Scientific.Workflow.Types where
 
-import Control.Applicative
-import Control.Arrow (Kleisli(..), Arrow(..), first, second)
-import qualified Control.Category as C
-import Control.Monad.Reader (ReaderT, lift, reader, (>=>), MonadTrans)
-import qualified Data.ByteString as B
-import Data.Default.Class
-import qualified Data.Text as T
-import Shelly (shelly, test_f, fromText)
+import           Control.Applicative
+import           Control.Arrow                     (Arrow (..), Kleisli (..),
+                                                    first, second)
+import qualified Control.Category                  as C
+import           Control.Monad.Reader              (MonadTrans, ReaderT, lift,
+                                                    reader, (>=>))
+import qualified Data.ByteString                   as B
+import           Data.Default.Class
+import qualified Data.HashMap.Strict               as M
+import qualified Language.Haskell.TH.Syntax        as TH
 
-import Scientific.Workflow.Serialization (Serializable(..))
+import           Scientific.Workflow.Serialization (Serializable (..))
+import           Scientific.Workflow.Utils         (fileExist)
 
-data Workflow where
-    Workflow :: IOProcessor () b -> Workflow
+--------------------------------------------------------------------------------
+-- Arrow
+--------------------------------------------------------------------------------
 
 -- | labeled Arrow
 newtype Processor m a b = Processor { runProcessor :: a -> m b }
@@ -48,12 +54,46 @@ label (pre, suc) l (Kleisli f) = Processor $ \x -> do
         Just v -> return v
 {-# INLINE label #-}
 
-type IOProcessor = Processor (ReaderT Config IO)
+type ID = String
 
-type Actor = Kleisli IO
+class Arrow a => Actor a b c where
+    arrIO :: a b c -> Kleisli IO b c
 
-actor :: (a -> IO b) -> Actor a b
-actor = Kleisli
+instance Actor (->) a b where
+    arrIO = arr
+
+instance Actor (Kleisli IO) a b where
+    arrIO = id
+
+proc :: Actor ar a b => Serializable b => ID -> ar a b -> IOProcessor a b
+proc l ar = label (recover, save) l $ arrIO ar
+
+source :: Serializable o => ID -> o -> Source o
+source l x = proc l $ const x
+
+nullSource :: Source o
+nullSource = label (const $ return $ Just undefined, undefined) "" $ arr $ const undefined
+
+recover :: Serializable a => ID -> ReaderT WorkflowConfig IO (Maybe a)
+recover l = do
+    dir1 <- reader _baseDir
+    dir2 <- reader _logDir
+    overwrite <- reader _overwrite
+    let file = dir1 ++ "/" ++ dir2 ++ "/" ++ l
+    exist <- lift $ fileExist file
+    if exist && not overwrite
+       then do c <- lift $ B.readFile file
+               return $ deserialize c
+       else return Nothing
+
+save :: Serializable a => ID -> a -> ReaderT WorkflowConfig IO ()
+save l x = do
+    dir1 <- reader _baseDir
+    dir2 <- reader _logDir
+    lift $ B.writeFile (dir1 ++ "/" ++ dir2  ++ "/" ++ l) $ serialize x
+
+
+type IOProcessor = Processor (ReaderT WorkflowConfig IO)
 
 -- | Source produce an output without inputs
 type Source = IOProcessor ()
@@ -68,39 +108,31 @@ instance Applicative Source where
         b <- g x
         return $ a b
 
-proc :: Serializable b => String -> Kleisli IO a b -> IOProcessor a b
-proc = label (recover, save)
+--------------------------------------------------------------------------------
+-- Workflow
+--------------------------------------------------------------------------------
 
-source :: Serializable o => String -> o -> Source o
-source l x = proc l $ arr $ const x
+data Workflow where
+    Workflow :: WorkflowConfig
+             -> [IOProcessor () b]
+             -> Workflow
 
-recover :: Serializable a => String -> ReaderT Config IO (Maybe a)
-recover l = do
-    dir <- reader _baseDir
-    let file = dir ++ l
-    exist <- lift $ fileExist file
-    if exist
-       then do c <- lift $ B.readFile file
-               return $ deserialize c
-       else return Nothing
-
-save :: Serializable a => String -> a -> ReaderT Config IO ()
-save l x = do
-    dir <- reader _baseDir
-    lift $ B.writeFile (dir++l) $ serialize x
-
-fileExist :: FilePath -> IO Bool
-fileExist x = shelly $ test_f $ fromText $ T.pack x
-
-data Config = Config
+data WorkflowConfig = WorkflowConfig
     { _baseDir :: !FilePath
+    , _logDir :: !FilePath
+    , _overwrite :: !Bool
     }
 
-data WorkflowOpt = WorkflowOpt
-    { _logDir :: !FilePath
-    }
+instance TH.Lift WorkflowConfig where
+    lift (WorkflowConfig a b c) = [| WorkflowConfig a b c |]
 
-instance Default WorkflowOpt where
-    def = WorkflowOpt
-        { _logDir = "wfCache/"
+instance Default WorkflowConfig where
+    def = WorkflowConfig
+        { _baseDir = "./"
+        , _logDir = "wfCache/"
+        , _overwrite = False
         }
+
+-- data WorkFlowState
+data WorkflowState = WorkflowState
+    { _nodeStatus :: M.HashMap ID Bool }

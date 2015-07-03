@@ -10,17 +10,17 @@ module Functions
 import Control.Arrow
 import Scientific.Workflow
 
-input :: Actor () Int
-input = arr $ const 10
+input :: () -> Int
+input = const 10
 
-plus1 :: Actor Int Int
-plus1 = arr (+1)
+plus1 :: Int -> Int
+plus1 = (+1)
 
---mul2 :: Actor Int Int
---mul2 = arr (*2)
+--mul2 :: Int -> Int
+--mul2 = (*2)
 
-combine :: Actor (Int, Int) Int
-combine = arr $ \(a,b) -> a + b
+combine :: (Int, Int) -> Int
+combine = \(a,b) -> 2 * (a + b)
 
 -- builder monad
 builder :: Builder ()
@@ -28,7 +28,7 @@ builder = do
     node "id000" 'input "this is input"
     node "id001" 'plus1 "add 1 to the input"
 --    node "id002" 'mul2 "double the input"
-    node "id002" [| arr (*2) |] ""
+    node "id002" [| (*2) |] ""
     node "id003" 'combine "combine two input"
 
     ["id000"] ~> "id001"
