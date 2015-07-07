@@ -74,6 +74,9 @@ source l x = proc l $ const x
 nullSource :: Source o
 nullSource = label (const $ return $ Just undefined, undefined) "" $ arr $ const undefined
 
+emptySource :: Source ()
+emptySource = label (const $ return $ Just undefined, undefined) "" $ arr $ const ()
+
 recover :: Serializable a => ID -> ReaderT WorkflowConfig IO (Maybe a)
 recover l = do
     dir1 <- reader _baseDir
@@ -112,10 +115,10 @@ instance Applicative Source where
 -- Workflow
 --------------------------------------------------------------------------------
 
+data Workflows = Workflows WorkflowConfig [Workflow]
+
 data Workflow where
-    Workflow :: WorkflowConfig
-             -> [IOProcessor () b]
-             -> Workflow
+    Workflow :: IOProcessor () b -> Workflow
 
 data WorkflowConfig = WorkflowConfig
     { _baseDir :: !FilePath

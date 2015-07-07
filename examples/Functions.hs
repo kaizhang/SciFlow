@@ -28,7 +28,7 @@ builder = do
     node "id000" 'input "this is input"
     node "id001" 'plus1 "add 1 to the input"
 --    node "id002" 'mul2 "double the input"
-    node "id002" [| (*2) |] ""
+    node "id002" [| (*(2::Int)) |] ""
     node "id003" 'combine "combine two input"
 
     ["id000"] ~> "id001"

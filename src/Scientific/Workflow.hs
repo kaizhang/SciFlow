@@ -18,10 +18,10 @@ import           Scientific.Workflow.Builder.TH
 import           Scientific.Workflow.Serialization.Yaml
 import           Scientific.Workflow.Types
 
-runWorkflow :: Workflow -> IO ()
-runWorkflow (Workflow config ps) = do
+runWorkflow :: Workflows -> IO ()
+runWorkflow (Workflows config ps) = do
     shelly $ mkdir_p $ fromText $ T.pack dir
-    forM_ ps $ \p -> do
+    forM_ ps $ \(Workflow p) -> do
         _ <- runReaderT (runProcessor p ()) config
         return ()
   where
