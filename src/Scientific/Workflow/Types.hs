@@ -121,16 +121,25 @@ data WorkflowConfig = WorkflowConfig
     { _baseDir :: !FilePath
     , _logDir :: !FilePath
     , _overwrite :: !Bool
-    }
+    , _buildMode :: !Mode
+    } deriving (Show)
+
+data Mode = All
+          | Select [ID] deriving (Show)
 
 instance TH.Lift WorkflowConfig where
-    lift (WorkflowConfig a b c) = [| WorkflowConfig a b c |]
+    lift (WorkflowConfig a b c d) = [| WorkflowConfig a b c d |]
+
+instance TH.Lift Mode where
+    lift All = [| All |]
+    lift (Select xs) = [| Select xs |]
 
 instance Default WorkflowConfig where
     def = WorkflowConfig
         { _baseDir = "./"
         , _logDir = "wfCache/"
         , _overwrite = False
+        , _buildMode = All
         }
 
 -- data WorkFlowState

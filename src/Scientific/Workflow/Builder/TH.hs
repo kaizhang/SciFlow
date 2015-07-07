@@ -7,16 +7,23 @@ import Language.Haskell.TH
 import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((>>>))
 import Control.Monad.State
-import Data.Default.Class
+import Data.List (foldl')
 import qualified Data.HashMap.Strict as M
+import qualified Data.HashSet as S
+import qualified Data.Text as T
+import Shelly (lsT, fromText, shelly, test_d)
 
 import Scientific.Workflow.Types
-import Scientific.Workflow.Utils (fileExist)
 import Scientific.Workflow.Builder
 
-readWorkflowState :: WorkflowConfig -> [ID] -> IO WorkflowState
-readWorkflowState config nodes = (WorkflowState . M.fromList . zip nodes) <$>
-                              mapM (fileExist . (dir++)) nodes
+readWorkflowState :: WorkflowConfig -> IO WorkflowState
+readWorkflowState config = do
+    fls <- shelly $ do
+        e <- test_d $ fromText $ T.pack dir
+        if e then lsT $ fromText $ T.pack dir
+             else return []
+    return $ WorkflowState $ M.fromList $
+        zip (map (T.unpack . snd . T.breakOnEnd "/") fls) $ repeat True
   where
     dir = _baseDir config ++ "/" ++ _logDir config ++ "/"
 
@@ -25,21 +32,41 @@ mkWorkflow :: String   -- ^ the name of workflow
            -> Builder ()
            -> Q [Dec]
 mkWorkflow name config builder = do
-    st <- runIO $ readWorkflowState config $ fst $ unzip nd
-
     nodeDec <- defineNodes nd   -- ^ define node functions
 
+    -- query current node running state
+    st' <- runIO $ readWorkflowState config
+
+    -- turn on target nodes
+    let st = st'{_nodeStatus = foldl' (\s (k,v) -> M.insert k v s) (_nodeStatus st') $ zip (fst $ unzip nd) $ repeat False}
+        f (nodeSet, acc) x
+            | x `S.member` nodeSet = ( S.difference nodeSet (S.fromList $ x : reachable x gr)
+                                   , x : acc )
+            | otherwise = (nodeSet, acc)
+
     -- construct workflow
-    wfDec <- [d| $( varP $ mkName name ) = Workflow config $( fmap ListE $ mapM (linkFrom (_overwrite config) st table) leafNodes )
+    wfDec <- [d| $( varP $ mkName name ) = Workflow config
+                     $( fmap ListE $
+                        mapM (linkFrom (_overwrite config) st table) targets )
              |]
 
     return $ nodeDec ++ wfDec
   where
     builderSt = execState builder $ B [] []
-    leafNodes = map (flip (M.lookupDefault undefined) table) . leaves .
-                fromFactors . snd . unzip . _links $ builderSt
+    sortedNodes = topSort gr
+    gr = fromFactors . snd . unzip . _links $ builderSt
     table = M.fromList $ _links builderSt
-    nd = map (\(a,b,_) -> (a,b)) $ _nodes builderSt
+    nd = let allNodes = map (\(a,b,_) -> (a,b)) $ _nodes builderSt
+         in case _buildMode config of
+             All -> allNodes
+             Select xs -> filter (\x -> fst x `elem` xs) allNodes
+    targets = map (flip (M.lookupDefault undefined) table) $ snd $
+              foldl' f (S.fromList $ fst $ unzip nd, []) $ reverse sortedNodes
+      where
+        f (nodeSet, acc) x
+            | x `S.member` nodeSet = ( S.difference nodeSet (S.fromList $ x : reachable x gr)
+                                   , x : acc )
+            | otherwise = (nodeSet, acc)
 
 defineNodes :: [(String, ExpQ)] -> Q [Dec]
 defineNodes nodes = fmap concat $ mapM f nodes

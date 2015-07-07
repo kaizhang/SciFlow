@@ -89,7 +89,9 @@ library
   -- other-extensions:
   build-depends:
       base >=4.0 && <5.0
+    , array
     , bytestring
+    , containers
     , data-default-class
     , mtl
     , shelly

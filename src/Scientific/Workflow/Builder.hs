@@ -3,9 +3,12 @@ module Scientific.Workflow.Builder where
 
 import           Control.Arrow             (second)
 import           Control.Monad.State.Lazy  (State, foldM_, modify)
+import Data.Array (listArray)
 import qualified Data.HashMap.Strict       as M
 import qualified Data.Text                 as T
 import           Data.Tuple                (swap)
+import qualified Data.Graph as G
+import           Data.List                 (nub)
 import           Language.Haskell.TH
 
 import           Scientific.Workflow.Types
@@ -19,6 +22,7 @@ data Factor = S String
             | L4 (String,String,String,String) String
             | L5 (String,String,String,String,String) String
             | L6 (String,String,String,String,String,String) String
+    deriving (Show)
 
 -- | State of Builder Monad, storing workflow structure
 data B = B
@@ -90,26 +94,44 @@ link6 (a,b,c,d,e,f) t = modify $ \s -> s{_links = (t, L6 (a,b,c,d,e,f) t) : _lin
 
 
 data Graph = Graph
-    { _children :: M.HashMap String [String]
-    , _parents  :: M.HashMap String [String]
-    , _vertice  :: [ID]
+    { _children :: !(M.HashMap String [String])
+    , _parents  :: !(M.HashMap String [String])
+    , _vertice  :: ![ID]
     }
 
-children :: String -> Graph -> [String]
+children :: ID -> Graph -> [ID]
 children x = M.lookupDefault [] x . _children
+{-# INLINE children #-}
 
-parents :: String -> Graph -> [String]
+parents :: ID -> Graph -> [ID]
 parents x = M.lookupDefault [] x . _parents
+{-# INLINE parents #-}
 
-leaves :: Graph -> [String]
+leaves :: Graph -> [ID]
 leaves g = filter (\x -> null $ children x g) $ _vertice g
+{-# INLINE leaves #-}
+
+topSort :: Graph -> [ID]
+topSort gr = map (flip (M.lookupDefault undefined) idToLab) $ G.topSort gr'
+  where
+    gr' = listArray (0,n-1) $ map (map (flip (M.lookupDefault undefined) labToId) . flip children gr) $ _vertice gr
+    n = M.size labToId
+    labToId = M.fromList $ zip (_vertice gr) [0..]
+    idToLab = M.fromList $ zip [0..] (_vertice gr)
+{-# INLINE topSort #-}
+
+reachable :: ID -> Graph -> [ID]
+reachable x gr = go $ parents x gr
+  where
+    go xs = xs ++ concatMap (flip parents gr) xs
+{-# INLINE reachable #-}
 
 fromFactors :: [Factor] -> Graph
 fromFactors us = Graph cs ps vs'
   where
     cs = M.fromListWith (++) $ map (second return) es'
     ps = M.fromListWith (++) $ map (second return . swap) es'
-    vs' = concat vs
+    vs' = nub $ concat vs
     es' = concat es
     (vs,es) = unzip $ map fn us
     fn (S a) = ([a], [])
@@ -119,3 +141,4 @@ fromFactors us = Graph cs ps vs'
     fn (L4 (a,b,c,d) t) = ([a,b,c,d,t], [(a,t),(b,t),(c,t),(d,t)])
     fn (L5 (a,b,c,d,e) t) = ([a,b,c,d,e,t], [(a,t),(b,t),(c,t),(d,t),(e,t)])
     fn (L6 (a,b,c,d,e,f) t) = ([a,b,c,d,e,f,t], [(a,t),(b,t),(c,t),(d,t),(e,t),(f,t)])
+{-# INLINE fromFactors #-}
