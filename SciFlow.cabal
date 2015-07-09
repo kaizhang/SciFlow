@@ -74,6 +74,10 @@ build-type:          Simple
 -- extra-source-files:
 cabal-version:       >=1.10
 
+Flag Debug
+  Description: Enable debug support
+  Default:     False
+
 library
   exposed-modules:
     Scientific.Workflow
@@ -84,11 +88,16 @@ library
     Scientific.Workflow.Serialization.Show
     Scientific.Workflow.Serialization.Yaml
 
+  if flag(debug)
+    CPP-Options: -DDEBUG
+  else
+    CPP-Options: -DNDEBUG
+
 --  other-modules:
 
   -- other-extensions:
   build-depends:
-      base >=4.0 && <5.0
+      base >=4.5 && <5.0
     , array
     , bytestring
     , containers
@@ -97,6 +106,7 @@ library
     , shelly
     , text
     , template-haskell
+    , th-lift
     , unordered-containers >=0.2
     , yaml
 

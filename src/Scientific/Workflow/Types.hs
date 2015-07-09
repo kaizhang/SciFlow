@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE CPP #-}
 module Scientific.Workflow.Types where
 
 import           Control.Applicative
@@ -14,10 +15,59 @@ import           Control.Monad.Reader              (MonadTrans, ReaderT, lift,
 import qualified Data.ByteString                   as B
 import           Data.Default.Class
 import qualified Data.HashMap.Strict               as M
+import qualified Language.Haskell.TH.Lift          as L
 import qualified Language.Haskell.TH.Syntax        as TH
+import           Debug.Trace
 
 import           Scientific.Workflow.Serialization (Serializable (..))
-import           Scientific.Workflow.Utils         (fileExist)
+
+--------------------------------------------------------------------------------
+-- Workflow
+--------------------------------------------------------------------------------
+
+type ID = String
+
+instance TH.Lift (M.HashMap ID Bool) where
+    lift x = [| M.fromList $(TH.lift $ M.toList x) |]
+
+data Mode = All
+          | Select [ID] deriving (Show)
+
+$(L.deriveLift ''Mode)
+
+-- data WorkFlowState
+data WorkflowState = WorkflowState
+    { _nodeStatus :: M.HashMap ID Bool } deriving (Show)
+
+$(L.deriveLift ''WorkflowState)
+
+finished :: WorkflowState -> [ID]
+finished = fst . unzip . filter snd . M.toList . _nodeStatus
+{-# INLINE finished #-}
+
+data WorkflowConfig = WorkflowConfig
+    { _baseDir :: !FilePath
+    , _logDir :: !FilePath
+    , _overwrite :: !Bool
+    , _buildMode :: !Mode
+    , _state :: !WorkflowState
+    } deriving (Show)
+
+$(L.deriveLift ''WorkflowConfig)
+
+instance Default WorkflowConfig where
+    def = WorkflowConfig
+        { _baseDir = "./"
+        , _logDir = "wfCache/"
+        , _overwrite = False
+        , _buildMode = All
+        , _state = WorkflowState M.empty
+        }
+
+data Workflows = Workflows WorkflowConfig [Workflow]
+
+data Workflow where
+    Workflow :: IOProcessor () b -> Workflow
 
 --------------------------------------------------------------------------------
 -- Arrow
@@ -54,7 +104,6 @@ label (pre, suc) l (Kleisli f) = Processor $ \x -> do
         Just v -> return v
 {-# INLINE label #-}
 
-type ID = String
 
 class Arrow a => Actor a b c where
     arrIO :: a b c -> Kleisli IO b c
@@ -81,12 +130,15 @@ recover :: Serializable a => ID -> ReaderT WorkflowConfig IO (Maybe a)
 recover l = do
     dir1 <- reader _baseDir
     dir2 <- reader _logDir
-    overwrite <- reader _overwrite
+    alreadyRun <- reader (M.lookupDefault False l . _nodeStatus . _state)
+
+    #ifdef DEBUG
+    traceM $ l ++ " already finished: "  ++ show alreadyRun
+    #endif
+
     let file = dir1 ++ "/" ++ dir2 ++ "/" ++ l
-    exist <- lift $ fileExist file
-    if exist && not overwrite
-       then do c <- lift $ B.readFile file
-               return $ deserialize c
+    if alreadyRun
+       then lift $ fmap deserialize $ B.readFile file  -- recover
        else return Nothing
 
 save :: Serializable a => ID -> a -> ReaderT WorkflowConfig IO ()
@@ -110,41 +162,3 @@ instance Applicative Source where
         a <- f x
         b <- g x
         return $ a b
-
---------------------------------------------------------------------------------
--- Workflow
---------------------------------------------------------------------------------
-
-data Workflows = Workflows WorkflowConfig [Workflow]
-
-data Workflow where
-    Workflow :: IOProcessor () b -> Workflow
-
-data WorkflowConfig = WorkflowConfig
-    { _baseDir :: !FilePath
-    , _logDir :: !FilePath
-    , _overwrite :: !Bool
-    , _buildMode :: !Mode
-    } deriving (Show)
-
-data Mode = All
-          | Select [ID] deriving (Show)
-
-instance TH.Lift WorkflowConfig where
-    lift (WorkflowConfig a b c d) = [| WorkflowConfig a b c d |]
-
-instance TH.Lift Mode where
-    lift All = [| All |]
-    lift (Select xs) = [| Select xs |]
-
-instance Default WorkflowConfig where
-    def = WorkflowConfig
-        { _baseDir = "./"
-        , _logDir = "wfCache/"
-        , _overwrite = False
-        , _buildMode = All
-        }
-
--- data WorkFlowState
-data WorkflowState = WorkflowState
-    { _nodeStatus :: M.HashMap ID Bool }
