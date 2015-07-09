@@ -102,6 +102,7 @@ library
     , bytestring
     , containers
     , data-default-class
+    , lens
     , mtl
     , shelly
     , text

@@ -8,7 +8,7 @@ module Scientific.Workflow
     ) where
 
 import           Control.Arrow                          (Kleisli (..))
-import           Control.Monad.Reader                   (forM_, runReaderT)
+import           Control.Monad.State                    (forM_, evalStateT)
 import qualified Data.Text                              as T
 import           Shelly                                 (fromText, mkdir_p,
                                                          shelly)
@@ -22,13 +22,10 @@ runWorkflow :: Workflows -> IO ()
 runWorkflow (Workflows config ps) = do
     shelly $ mkdir_p $ fromText $ T.pack dir
     forM_ ps $ \(Workflow p) -> do
-        _ <- runReaderT (runProcessor p ()) config
+        _ <- evalStateT (runProcessor p ()) config
         return ()
   where
     dir = _baseDir config ++ "/" ++ _logDir config
-
---readWorkflowState :: WorkflowOpt -> IO WorkflowState
---readWorkflowState opt = do
 
 mapA :: Monad m => Kleisli m a b -> Kleisli m [a] [b]
 mapA (Kleisli f) = Kleisli $ mapM f

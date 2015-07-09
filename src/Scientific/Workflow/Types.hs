@@ -10,8 +10,9 @@ import           Control.Applicative
 import           Control.Arrow                     (Arrow (..), Kleisli (..),
                                                     first, second)
 import qualified Control.Category                  as C
-import           Control.Monad.Reader              (MonadTrans, ReaderT, lift,
-                                                    reader, (>=>))
+import           Control.Monad.State               (MonadTrans, StateT, lift,
+                                                    get, (>=>))
+import Control.Lens
 import qualified Data.ByteString                   as B
 import           Data.Default.Class
 import qualified Data.HashMap.Strict               as M
@@ -39,6 +40,7 @@ $(L.deriveLift ''Mode)
 data WorkflowState = WorkflowState
     { _nodeStatus :: M.HashMap ID Bool } deriving (Show)
 
+makeLenses ''WorkflowState
 $(L.deriveLift ''WorkflowState)
 
 finished :: WorkflowState -> [ID]
@@ -53,7 +55,8 @@ data WorkflowConfig = WorkflowConfig
     , _state :: !WorkflowState
     } deriving (Show)
 
-$(L.deriveLift ''WorkflowConfig)
+makeLenses ''WorkflowConfig
+L.deriveLift ''WorkflowConfig
 
 instance Default WorkflowConfig where
     def = WorkflowConfig
@@ -114,6 +117,8 @@ instance Actor (->) a b where
 instance Actor (Kleisli IO) a b where
     arrIO = id
 
+type IOProcessor = Processor (StateT WorkflowConfig IO)
+
 proc :: Actor ar a b => Serializable b => ID -> ar a b -> IOProcessor a b
 proc l ar = label (recover, save) l $ arrIO ar
 
@@ -126,11 +131,11 @@ nullSource = label (const $ return $ Just undefined, undefined) "" $ arr $ const
 emptySource :: Source ()
 emptySource = label (const $ return $ Just undefined, undefined) "" $ arr $ const ()
 
-recover :: Serializable a => ID -> ReaderT WorkflowConfig IO (Maybe a)
+recover :: Serializable a => ID -> StateT WorkflowConfig IO (Maybe a)
 recover l = do
-    dir1 <- reader _baseDir
-    dir2 <- reader _logDir
-    alreadyRun <- reader (M.lookupDefault False l . _nodeStatus . _state)
+    dir1 <- use baseDir
+    dir2 <- use logDir
+    alreadyRun <- M.lookupDefault False l <$> use (state.nodeStatus)
 
     #ifdef DEBUG
     traceM $ l ++ " already finished: "  ++ show alreadyRun
@@ -140,15 +145,15 @@ recover l = do
     if alreadyRun
        then lift $ fmap deserialize $ B.readFile file  -- recover
        else return Nothing
+{-# INLINE recover #-}
 
-save :: Serializable a => ID -> a -> ReaderT WorkflowConfig IO ()
+save :: Serializable a => ID -> a -> StateT WorkflowConfig IO ()
 save l x = do
-    dir1 <- reader _baseDir
-    dir2 <- reader _logDir
+    dir1 <- _baseDir <$> get
+    dir2 <- _logDir <$> get
     lift $ B.writeFile (dir1 ++ "/" ++ dir2  ++ "/" ++ l) $ serialize x
-
-
-type IOProcessor = Processor (ReaderT WorkflowConfig IO)
+    (state.nodeStatus) %= M.insert l True
+{-# INLINE save #-}
 
 -- | Source produce an output without inputs
 type Source = IOProcessor ()
