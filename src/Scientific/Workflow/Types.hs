@@ -34,14 +34,14 @@ instance TH.Lift (M.HashMap ID Bool) where
 data Mode = All
           | Select [ID] deriving (Show)
 
-$(L.deriveLift ''Mode)
+L.deriveLift ''Mode
 
 -- data WorkFlowState
 data WorkflowState = WorkflowState
     { _nodeStatus :: M.HashMap ID Bool } deriving (Show)
 
 makeLenses ''WorkflowState
-$(L.deriveLift ''WorkflowState)
+L.deriveLift ''WorkflowState
 
 finished :: WorkflowState -> [ID]
 finished = fst . unzip . filter snd . M.toList . _nodeStatus
@@ -137,9 +137,9 @@ recover l = do
     dir2 <- use logDir
     alreadyRun <- M.lookupDefault False l <$> use (state.nodeStatus)
 
-    #ifdef DEBUG
+#ifdef DEBUG
     traceM $ l ++ " already finished: "  ++ show alreadyRun
-    #endif
+#endif
 
     let file = dir1 ++ "/" ++ dir2 ++ "/" ++ l
     if alreadyRun

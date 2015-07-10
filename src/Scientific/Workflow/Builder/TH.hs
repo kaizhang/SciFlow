@@ -40,9 +40,9 @@ mkWorkflow name config builder = do
         then return $ WorkflowState M.empty
         else runIO $ readWorkflowState config
 
-    #ifdef DEBUG
+#ifdef DEBUG
     traceShowM st
-    #endif
+#endif
 
     -- turn on target nodes
 --    let st = st'{_nodeStatus = foldl' (\s (k,v) -> M.insert k v s) (_nodeStatus st') $ zip (fst $ unzip nd) $ repeat False}
