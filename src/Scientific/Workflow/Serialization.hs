@@ -4,4 +4,4 @@ import qualified Data.ByteString as B
 
 class Serializable a where
     serialize :: a -> B.ByteString
-    deserialize :: B.ByteString -> Maybe a
+    deserialize :: B.ByteString -> a

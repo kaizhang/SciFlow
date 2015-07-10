@@ -83,7 +83,7 @@ recover l = do
     exist <- lift $ fileExist file
     if exist && not overwrite
        then do c <- lift $ B.readFile file
-               return $ deserialize c
+               return $ Just $ deserialize c
        else return Nothing
 
 save :: Serializable a => ID -> a -> ReaderT WorkflowConfig IO ()
@@ -113,9 +113,7 @@ instance Applicative Source where
 --------------------------------------------------------------------------------
 
 data Workflow where
-    Workflow :: WorkflowConfig
-             -> [IOProcessor () b]
-             -> Workflow
+    Workflow :: IOProcessor () b -> Workflow
 
 data WorkflowConfig = WorkflowConfig
     { _baseDir :: !FilePath

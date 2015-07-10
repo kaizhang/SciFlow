@@ -18,17 +18,14 @@ import           Scientific.Workflow.Builder.TH
 import           Scientific.Workflow.Serialization.Yaml
 import           Scientific.Workflow.Types
 
-runWorkflow :: Workflow -> IO ()
-runWorkflow (Workflow config ps) = do
+runWorkflow :: [Workflow] -> WorkflowConfig -> IO ()
+runWorkflow wfs config = do
     shelly $ mkdir_p $ fromText $ T.pack dir
-    forM_ ps $ \p -> do
-        _ <- runReaderT (runProcessor p ()) config
+    forM_ wfs $ \(Workflow wf) -> do
+        _ <- runReaderT (runProcessor wf ()) config
         return ()
   where
     dir = _baseDir config ++ "/" ++ _logDir config
-
---readWorkflowState :: WorkflowOpt -> IO WorkflowState
---readWorkflowState opt = do
 
 mapA :: Monad m => Kleisli m a b -> Kleisli m [a] [b]
 mapA (Kleisli f) = Kleisli $ mapM f
