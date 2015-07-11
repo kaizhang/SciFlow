@@ -50,9 +50,16 @@ writeNodeStatus :: ID -> NodeState -> NodesDB -> NodesDB
 writeNodeStatus = M.insert
 {-# INLINE writeNodeStatus #-}
 
+data Mode = All
+          | Select [ID]
+
+L.deriveLift ''Mode
+
 data RunOpt = RunOpt
     { _runDir :: !FilePath
     , _runLogDir :: !FilePath
+    , _runMode :: !Mode
+    , _runForce :: !Bool
     }
 
 L.deriveLift ''RunOpt
@@ -61,6 +68,8 @@ instance Default RunOpt where
     def = RunOpt
         { _runDir = "./"
         , _runLogDir = "wfCache/"
+        , _runMode = All
+        , _runForce = False
         }
 
 mkNodesDB :: RunOpt -> IO NodesDB
