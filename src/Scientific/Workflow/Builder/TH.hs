@@ -21,16 +21,15 @@ readWorkflowState config nodes = (WorkflowState . M.fromList . zip nodes) <$>
     dir = _baseDir config ++ "/" ++ _logDir config ++ "/"
 
 mkWorkflow :: String   -- ^ the name of workflow
-           -> WorkflowConfig
            -> Builder ()
            -> Q [Dec]
-mkWorkflow name config builder = do
-    st <- runIO $ readWorkflowState config $ fst $ unzip nd
+mkWorkflow name builder = do
+--    st <- runIO $ readWorkflowState config $ fst $ unzip nd
 
     nodeDec <- defineNodes nd   -- ^ define node functions
 
     -- construct workflow
-    wfDec <- [d| $( varP $ mkName name ) = Workflow config $( fmap ListE $ mapM (linkFrom (_overwrite config) st table) leafNodes )
+    wfDec <- [d| $( varP $ mkName name ) = $( fmap ListE $ mapM (linkFrom table) leafNodes )
              |]
 
     return $ nodeDec ++ wfDec
@@ -48,17 +47,12 @@ defineNodes nodes = fmap concat $ mapM f nodes
 {-# INLINE defineNodes #-}
 
 -- | Start linking processors from a given node
-linkFrom :: Bool   -- ^ overwrite or not
-         -> WorkflowState
-         -> M.HashMap String Factor
+linkFrom :: M.HashMap String Factor
          -> Factor
          -> Q Exp
-linkFrom overwrite st table nd = go nd
+linkFrom table nd = [| Workflow $(go nd) |]
   where
-    expand x = if nodeExist x
-                   then [| nullSource >>> $(go $ S x) |]
-                   else go $ M.lookupDefault (S x) x table
-    nodeExist x = not overwrite && M.lookupDefault False x (_nodeStatus st)
+    expand x = go $ M.lookupDefault (S x) x table
 
     go (S a) = varE $ mkName a
     go (L a t) = [| $(expand a) >>> $(go $ S t) |]
