@@ -14,11 +14,6 @@ import Scientific.Workflow.Types
 import Scientific.Workflow.Utils (fileExist)
 import Scientific.Workflow.Builder
 
-readWorkflowState :: WorkflowConfig -> [ID] -> IO WorkflowState
-readWorkflowState config nodes = (WorkflowState . M.fromList . zip nodes) <$>
-                              mapM (fileExist . (dir++)) nodes
-  where
-    dir = _baseDir config ++ "/" ++ _logDir config ++ "/"
 
 mkWorkflow :: String   -- ^ the name of workflow
            -> Builder ()

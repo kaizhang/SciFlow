@@ -91,6 +91,7 @@ library
       base >=4.0 && <5.0
     , bytestring
     , data-default-class
+    , lens >=4.0
     , mtl
     , shelly
     , text

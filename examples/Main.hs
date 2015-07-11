@@ -4,6 +4,6 @@ import qualified Functions as F
 import Data.Default
 
 -- assemble workflow using template haskell
-$(mkWorkflow "myWorkflow" def{_overwrite=True} F.builder)
+$(mkWorkflow "myWorkflow" F.builder)
 
-main = runWorkflow myWorkflow
+main = runWorkflow myWorkflow def

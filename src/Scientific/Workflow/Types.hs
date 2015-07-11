@@ -1,7 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Scientific.Workflow.Types where
 
@@ -9,15 +9,70 @@ import           Control.Applicative
 import           Control.Arrow                     (Arrow (..), Kleisli (..),
                                                     first, second)
 import qualified Control.Category                  as C
-import           Control.Monad.Reader              (MonadTrans, ReaderT, lift,
-                                                    reader, (>=>))
+import Control.Lens (makeLenses, use, (%=))
+import           Control.Monad.State               (MonadTrans, StateT, lift,
+                                                     (>=>))
 import qualified Data.ByteString                   as B
 import           Data.Default.Class
 import qualified Data.HashMap.Strict               as M
-import qualified Language.Haskell.TH.Syntax        as TH
+import qualified Data.Text                         as T
+import Shelly (shelly, test_d, lsT, fromText)
 
 import           Scientific.Workflow.Serialization (Serializable (..))
-import           Scientific.Workflow.Utils         (fileExist)
+
+--------------------------------------------------------------------------------
+-- Workflow
+--------------------------------------------------------------------------------
+
+type ID = String
+
+data NodeState = Finished
+               | Unfinished
+               | Skip
+    deriving (Show)
+
+type NodesDB = M.HashMap ID NodeState
+
+data WorkflowConfig = WorkflowConfig
+    { _baseDir :: !FilePath
+    , _logDir :: !FilePath
+    , _nodeStatus :: !NodesDB
+    }
+
+makeLenses ''WorkflowConfig
+
+readNodeStatus :: ID -> NodesDB -> NodeState
+readNodeStatus = M.lookupDefault Unfinished
+{-# INLINE readNodeStatus #-}
+
+writeNodeStatus :: ID -> NodeState -> NodesDB -> NodesDB
+writeNodeStatus = M.insert
+{-# INLINE writeNodeStatus #-}
+
+data RunOpt = RunOpt
+    { _runDir :: !FilePath
+    , _runLogDir :: !FilePath
+    }
+
+instance Default RunOpt where
+    def = RunOpt
+        { _runDir = "./"
+        , _runLogDir = "wfCache/"
+        }
+
+mkNodesDB :: RunOpt -> IO NodesDB
+mkNodesDB opt = do
+    fls <- shelly $ do
+        e <- test_d $ fromText $ T.pack dir
+        if e then lsT $ fromText $ T.pack dir
+             else return []
+    return $ M.fromList $
+        zip (map (T.unpack . snd . T.breakOnEnd "/") fls) $ repeat Finished
+  where
+    dir = _runDir opt ++ "/" ++ _runLogDir opt ++ "/"
+
+data Workflow where
+    Workflow :: IOProcessor () b -> Workflow
 
 --------------------------------------------------------------------------------
 -- Arrow
@@ -54,7 +109,6 @@ label (pre, suc) l (Kleisli f) = Processor $ \x -> do
         Just v -> return v
 {-# INLINE label #-}
 
-type ID = String
 
 class Arrow a => Actor a b c where
     arrIO :: a b c -> Kleisli IO b c
@@ -72,28 +126,30 @@ source :: Serializable o => ID -> o -> Source o
 source l x = proc l $ const x
 
 nullSource :: Source o
-nullSource = label (const $ return $ Just undefined, undefined) "" $ arr $ const undefined
+nullSource = label (const $ return $ Just undefined, undefined) ("" :: String) $ arr $ const undefined
 
-recover :: Serializable a => ID -> ReaderT WorkflowConfig IO (Maybe a)
+recover :: Serializable a => ID -> StateT WorkflowConfig IO (Maybe a)
 recover l = do
-    dir1 <- reader _baseDir
-    dir2 <- reader _logDir
-    overwrite <- reader _overwrite
-    let file = dir1 ++ "/" ++ dir2 ++ "/" ++ l
-    exist <- lift $ fileExist file
-    if exist && not overwrite
-       then do c <- lift $ B.readFile file
-               return $ Just $ deserialize c
-       else return Nothing
+    st <- readNodeStatus l <$> use nodeStatus
+    case st of
+        Finished -> do
+            dir1 <- use baseDir
+            dir2 <- use logDir
+            let file = dir1 ++ "/" ++ dir2 ++ "/" ++ l
+            (Just . deserialize) <$> lift (B.readFile file)
+        Unfinished -> return Nothing
+        Skip -> return $ Just undefined
+{-# INLINE recover #-}
 
-save :: Serializable a => ID -> a -> ReaderT WorkflowConfig IO ()
+save :: Serializable a => ID -> a -> StateT WorkflowConfig IO ()
 save l x = do
-    dir1 <- reader _baseDir
-    dir2 <- reader _logDir
+    dir1 <- use baseDir
+    dir2 <- use logDir
     lift $ B.writeFile (dir1 ++ "/" ++ dir2  ++ "/" ++ l) $ serialize x
+    nodeStatus %= writeNodeStatus l Finished
+{-# INLINE save #-}
 
-
-type IOProcessor = Processor (ReaderT WorkflowConfig IO)
+type IOProcessor = Processor (StateT WorkflowConfig IO)
 
 -- | Source produce an output without inputs
 type Source = IOProcessor ()
@@ -107,30 +163,3 @@ instance Applicative Source where
         a <- f x
         b <- g x
         return $ a b
-
---------------------------------------------------------------------------------
--- Workflow
---------------------------------------------------------------------------------
-
-data Workflow where
-    Workflow :: IOProcessor () b -> Workflow
-
-data WorkflowConfig = WorkflowConfig
-    { _baseDir :: !FilePath
-    , _logDir :: !FilePath
-    , _overwrite :: !Bool
-    }
-
-instance TH.Lift WorkflowConfig where
-    lift (WorkflowConfig a b c) = [| WorkflowConfig a b c |]
-
-instance Default WorkflowConfig where
-    def = WorkflowConfig
-        { _baseDir = "./"
-        , _logDir = "wfCache/"
-        , _overwrite = False
-        }
-
--- data WorkFlowState
-data WorkflowState = WorkflowState
-    { _nodeStatus :: M.HashMap ID Bool }
