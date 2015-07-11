@@ -84,6 +84,7 @@ library
     Scientific.Workflow.Serialization
     Scientific.Workflow.Serialization.Show
     Scientific.Workflow.Serialization.Yaml
+    Scientific.Workflow.Utils
 
 --  other-modules:
 
