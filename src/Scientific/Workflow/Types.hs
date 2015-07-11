@@ -16,6 +16,7 @@ import qualified Data.ByteString                   as B
 import           Data.Default.Class
 import qualified Data.HashMap.Strict               as M
 import qualified Data.Text                         as T
+import qualified Language.Haskell.TH.Lift          as L
 import Shelly (shelly, test_d, lsT, fromText)
 
 import           Scientific.Workflow.Serialization (Serializable (..))
@@ -53,6 +54,8 @@ data RunOpt = RunOpt
     { _runDir :: !FilePath
     , _runLogDir :: !FilePath
     }
+
+L.deriveLift ''RunOpt
 
 instance Default RunOpt where
     def = RunOpt

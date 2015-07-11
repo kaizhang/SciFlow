@@ -1,9 +1,13 @@
 {-# LANGUAGE TemplateHaskell #-}
+import Scientific.Workflow.Main
 import Scientific.Workflow
 import qualified Functions as F
 import Data.Default
 
--- assemble workflow using template haskell
-$(mkWorkflow "myWorkflow" F.builder)
+{-
+mkWorkflow "my" F.builder
 
-main = runWorkflow myWorkflow def
+main = defaultMain my
+-}
+
+defaultMain F.builder
