@@ -74,6 +74,10 @@ build-type:          Simple
 -- extra-source-files:
 cabal-version:       >=1.10
 
+Flag Debug
+  Description: Enable debug support
+  Default:     False
+
 library
   exposed-modules:
     Scientific.Workflow
@@ -86,9 +90,11 @@ library
     Scientific.Workflow.Serialization.Yaml
     Scientific.Workflow.Utils
 
---  other-modules:
+  if flag(debug)
+    CPP-Options: -DDEBUG
+  else
+    CPP-Options: -DNDEBUG
 
-  -- other-extensions:
   build-depends:
       base >=4.0 && <5.0
     , bytestring

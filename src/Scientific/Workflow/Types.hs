@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE CPP #-}
 module Scientific.Workflow.Types where
 
 import           Control.Applicative
@@ -20,6 +21,8 @@ import qualified Language.Haskell.TH.Lift          as L
 import Shelly (shelly, test_d, lsT, fromText)
 
 import           Scientific.Workflow.Serialization (Serializable (..))
+
+import Debug.Trace
 
 --------------------------------------------------------------------------------
 -- Workflow
@@ -143,6 +146,11 @@ nullSource = label (const $ return $ Just undefined, undefined) ("" :: String) $
 recover :: Serializable a => ID -> StateT WorkflowConfig IO (Maybe a)
 recover l = do
     st <- readNodeStatus l <$> use nodeStatus
+
+#ifdef DEBUG
+    traceM $ "Process node: " ++ l ++ " . Status is: " ++ show st
+#endif
+
     case st of
         Finished -> do
             dir1 <- use baseDir
@@ -159,6 +167,10 @@ save l x = do
     dir2 <- use logDir
     lift $ B.writeFile (dir1 ++ "/" ++ dir2  ++ "/" ++ l) $ serialize x
     nodeStatus %= writeNodeStatus l Finished
+
+#ifdef DEBUG
+    traceM $ "Finish node: " ++ l ++ "\n"
+#endif
 {-# INLINE save #-}
 
 type IOProcessor = Processor (StateT WorkflowConfig IO)

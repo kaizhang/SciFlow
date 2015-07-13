@@ -7,7 +7,7 @@ module Scientific.Workflow
     , mapA
     ) where
 
-import           Control.Monad.State                    (forM_, execStateT)
+import           Control.Monad.State                    (foldM_, runStateT)
 import qualified Data.Text                              as T
 import Data.List (foldl')
 import           Shelly                                 (fromText, mkdir_p,
@@ -31,8 +31,9 @@ runWorkflow wfs opt = do
             else db
 
     let config = WorkflowConfig (_runDir opt) (_runLogDir opt) st
-    forM_ wfs $ \(Workflow wf) -> do
-        _ <- execStateT (runProcessor wf ()) config
-        return ()
+    foldM_ f config wfs
   where
     dir = _runDir opt ++ "/" ++ _runLogDir opt
+    f config (Workflow wf) = do
+        (_, config') <- runStateT (runProcessor wf ()) config
+        return config'
