@@ -29,9 +29,12 @@ workflowOptions = subparser $
            <> short 'f' )
 
 defaultMain :: Builder () -> Q [Dec]
-defaultMain builder = do
+defaultMain = defineWorkflow "main"
+
+defineWorkflow :: String -> Builder () -> Q [Dec]
+defineWorkflow name builder = do
     workflowDec <- mkWorkflow "workflow_main" builder
-    mainDec <- [d| $(varP $ mkName "main") = execParser
+    mainDec <- [d| $(varP $ mkName name) = execParser
                        (info (helper <*> workflowOptions) fullDesc) >>=
                        runWorkflow $(varE $ mkName "workflow_main")
                |]
