@@ -23,6 +23,7 @@ Flag Debug
   Default:     False
 
 library
+  ghc-options: -Wall
   exposed-modules:
     Scientific.Workflow.Types
 
