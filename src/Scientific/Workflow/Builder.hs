@@ -11,17 +11,29 @@ module Scientific.Workflow.Builder
     , path
     , Builder
     , buildWorkflow
+    , buildWorkflowPart
+    , getWorkflowState
     ) where
 
 import Control.Lens ((^.), (%~), _1, _2, _3, at, (.=))
 import           Control.Monad.State
 import qualified Data.Text           as T
-import Data.Graph.Inductive.Graph (mkGraph, lab, labNodes, outdeg, inn)
+import Data.Graph.Inductive.Graph
+    ( mkGraph
+    , lab
+    , labNodes
+    , outdeg
+    , lpre
+    , labnfilter
+    , gmap
+    , suc
+    , subgraph )
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.List (sortBy)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.Ord (comparing)
+import qualified Data.Map                    as M
 
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift as T
@@ -72,6 +84,26 @@ buildWorkflow :: String
               -> Q [Dec]
 buildWorkflow wfName b = mkWorkflow wfName $ mkDAG b
 
+buildWorkflowPart :: State RunOpt ()
+                  -> String
+                  -> Builder ()
+                  -> Q [Dec]
+buildWorkflowPart setOpt wfName b = do
+    st <- runIO $ getWorkflowState $ opt^.dbPath
+    mkWorkflow wfName $ trimDAG st $ mkDAG b
+  where
+    opt = execState setOpt defaultRunOpt
+
+getWorkflowState :: FilePath -> IO WorkflowState
+getWorkflowState dir = do
+    db <- openDB dir
+    ks <- getKeys db
+    pSt <- mapM (flip isFinished db) ks
+    let pSts = M.fromList $ zipWith (\k s ->
+                 if s then (k, Finished) else (k, Scheduled)) ks pSt
+    return $ WorkflowState db pSts
+{-# INLINE getWorkflowState #-}
+
 -- | Objects that can be converted to ExpQ
 class ToExpQ a where
     toExpQ :: a -> ExpQ
@@ -96,10 +128,18 @@ mkDAG b = mkGraph ns' es'
         err k _ _ = error $ "multiple instances for: " ++ T.unpack k
 {-# INLINE mkDAG #-}
 
-{-
 trimDAG :: WorkflowState -> DAG -> DAG
-trimDAG st dag =
--}
+trimDAG st dag = gmap revise gr
+  where
+    revise c | done (c^._3._1) && null (c^._1) = _3._2._1 %~ e $ c
+            | otherwise = c
+      where e x = [| const undefined >=> $(x) |]
+    gr = labnfilter f dag
+      where
+        f (i, (x,_)) = (not . done) x || any (not . done) children
+          where children = map (fst . fromJust . lab dag) $ suc dag i
+    done x = getStatus x == Finished
+    getStatus x = M.findWithDefault Scheduled x $ st^.procStatus
 
 mkWorkflow :: String -> DAG -> Q [Dec]
 mkWorkflow wfName dag = do
@@ -115,8 +155,8 @@ mkWorkflow wfName dag = do
       where
         go n = connect inNodes n
           where
-            inNodes = map (\(x,_,_) -> (x, fromJust $ lab dag x)) $
-                      sortBy (comparing (^._3)) $ inn dag $ fst n
+            inNodes = map (\(x,_) -> (x, fromJust $ lab dag x)) $
+                      sortBy (comparing snd) $ lpre dag $ fst n
         define n = varE $ mkName (T.unpack $ (snd n) ^. _1)
         connect [] t = define t
         connect [s1] t = [| $(go s1) >=> $(define t) |]

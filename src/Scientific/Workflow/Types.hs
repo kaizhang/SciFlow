@@ -13,6 +13,7 @@ module Scientific.Workflow.Types
     , procStatus
     , Processor
     , RunOpt(..)
+    , defaultRunOpt
     , dbPath
     , Serializable(..)
     , Attribute(..)
@@ -43,6 +44,7 @@ type PID = T.Text
 
 data ProcState = Finished
                | Scheduled
+    deriving (Eq)
 
 data WorkflowState = WorkflowState
     { _db         :: WorkflowDB
@@ -61,6 +63,10 @@ data RunOpt = RunOpt
     }
 
 makeLenses ''RunOpt
+
+defaultRunOpt :: RunOpt
+defaultRunOpt = RunOpt
+    { _dbPath = "wfDB" }
 
 data Attribute = Attribute
     { _note :: T.Text
