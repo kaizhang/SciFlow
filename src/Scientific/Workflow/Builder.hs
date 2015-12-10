@@ -117,13 +117,11 @@ mkWorkflow wfName dag = do
         define n = varE $ mkName (T.unpack $ (snd n) ^. _1)
         connect [] t = define t
         connect [s1] t = [| $(go s1) >=> $(define t) |]
-        connect [s1,s2] t = [| ( (,) <$$> $(go s1) <**> $(go s2) ) >=> $(define t) |]
-        connect xs t = error $ show $ length xs
+        connect xs t = [| $(foldl f e0 $ tail xs) >=> $(define t) |]
+          where
+            e0 = [| (fmap.fmap) $(conE (tupleDataName $ length xs)) $(go $ head xs) |]
+            f acc x = [| $(acc) <**> $(go x) |]
 {-# INLINE mkWorkflow #-}
-
-(<$$>) :: (Functor f1, Functor f2) => (a -> b) -> f1 (f2 a) -> f1 (f2 b)
-(<$$>) = fmap . fmap
-{-# INLINE (<$$>) #-}
 
 (<**>) :: (Applicative f1, Applicative f2, Functor f1, Functor f2) => f1 (f2 (a -> b)) -> f1 (f2 a) -> f1 (f2 b)
 (<**>) = (<*>) . fmap (<*>)
