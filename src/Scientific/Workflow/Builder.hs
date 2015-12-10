@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 
 module Scientific.Workflow.Builder
     ( node
@@ -12,7 +13,7 @@ module Scientific.Workflow.Builder
     , buildWorkflow
     ) where
 
-import Control.Lens ((^.), (%~), _1, _2, _3)
+import Control.Lens ((^.), (%~), _1, _2, _3, at, (.=))
 import           Control.Monad.State
 import qualified Data.Text           as T
 import Data.Graph.Inductive.Graph (mkGraph, lab, labNodes, outdeg, inn)
@@ -27,6 +28,8 @@ import qualified Language.Haskell.TH.Lift as T
 
 import Scientific.Workflow.Types
 import Scientific.Workflow.DB
+
+import Debug.Trace (traceM)
 
 instance T.Lift T.Text where
   lift t = [| T.pack $(T.lift $ T.unpack t) |]
@@ -117,10 +120,10 @@ mkWorkflow wfName dag = do
         define n = varE $ mkName (T.unpack $ (snd n) ^. _1)
         connect [] t = define t
         connect [s1] t = [| $(go s1) >=> $(define t) |]
-        connect xs t = [| $(foldl f e0 $ tail xs) >=> $(define t) |]
+        connect xs t = [| $(foldl g e0 $ tail xs) >=> $(define t) |]
           where
             e0 = [| (fmap.fmap) $(conE (tupleDataName $ length xs)) $(go $ head xs) |]
-            f acc x = [| $(acc) <**> $(go x) |]
+            g acc x = [| $(acc) <**> $(go x) |]
 {-# INLINE mkWorkflow #-}
 
 (<**>) :: (Applicative f1, Applicative f2, Functor f1, Functor f2) => f1 (f2 (a -> b)) -> f1 (f2 a) -> f1 (f2 b)
@@ -130,9 +133,14 @@ mkWorkflow wfName dag = do
 mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
 mkProc p f = \input -> do
     st <- get
-    case M.findWithDefault Scheduled p (_procStatus st) of
-        Finished -> lift $ readData p $ _db st
-        Scheduled -> lift $ do
-            result <- f input
-            saveData p result $ _db st
+    case M.findWithDefault Scheduled p (st^.procStatus) of
+        Finished -> lift $ readData p $ st^.db
+        Scheduled -> do
+#ifdef DEBUG
+            traceM $ "Running node: " ++ T.unpack p
+#endif
+            result <- lift $ f input
+            lift $ saveData p result $ st^.db
+
+            (procStatus . at p) .= Just Finished
             return result

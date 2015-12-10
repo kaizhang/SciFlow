@@ -9,12 +9,14 @@ module Scientific.Workflow.Types
     , PID
     , ProcState(..)
     , WorkflowState(..)
+    , db
+    , procStatus
     , Processor
     , RunOpt(..)
     , dbPath
     , Serializable(..)
     , Attribute(..)
-    , info
+    , note
     , def
     ) where
 
@@ -34,10 +36,8 @@ instance (FromJSON a, ToJSON a) => Serializable a where
     serialize = encode
     deserialize = fromJust . decode
 
-data WorkflowDB  = WorkflowDB FilePath
 
-data Workflow where
-    Workflow :: (Processor () o) -> Workflow
+data WorkflowDB  = WorkflowDB FilePath
 
 type PID = T.Text
 
@@ -49,7 +49,12 @@ data WorkflowState = WorkflowState
     , _procStatus :: M.Map PID ProcState
     }
 
+makeLenses ''WorkflowState
+
 type Processor a b = a -> StateT WorkflowState IO b
+
+data Workflow where
+    Workflow :: (Processor () o) -> Workflow
 
 data RunOpt = RunOpt
     { _dbPath :: FilePath
@@ -58,7 +63,7 @@ data RunOpt = RunOpt
 makeLenses ''RunOpt
 
 data Attribute = Attribute
-    { _info :: T.Text
+    { _note :: T.Text
     }
 
 makeLenses ''Attribute

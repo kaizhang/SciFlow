@@ -4,7 +4,6 @@ module Scientific.Workflow
     , module Scientific.Workflow.Types
     ) where
 
-import Control.Lens
 import           Control.Monad.State
 import qualified Data.Map                    as M
 
