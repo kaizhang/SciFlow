@@ -25,6 +25,9 @@ Flag Debug
 library
   ghc-options: -Wall
   exposed-modules:
+    Scientific.Workflow
+    Scientific.Workflow.Builder
+    Scientific.Workflow.DB
     Scientific.Workflow.Types
 
   if flag(debug)
@@ -36,6 +39,7 @@ library
       base >=4.0 && <5.0
     , bytestring
     , data-default-class
+    , fgl
     , lens >=4.0
     , mtl
     , optparse-applicative
@@ -44,7 +48,7 @@ library
     , th-lift
     , text
     , template-haskell
-    , unordered-containers >=0.2
+    , containers
     , yaml
 
   hs-source-dirs:      src
