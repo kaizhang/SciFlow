@@ -54,12 +54,12 @@ type Edge = (PID, PID, EdgeOrd)
 type Builder = State ([Node], [Edge])
 
 -- | Declare a computational node
-node :: PID -> ExpQ -> State Attribute () -> Builder ()
+node :: ToExpQ q => PID -> q -> State Attribute () -> Builder ()
 node p fn setAttr = modify $ _1 %~ (newNode:)
   where
     attr = execState setAttr defaultAttribute
     defaultAttribute = Attribute ""
-    newNode = (p, (fn, attr))
+    newNode = (p, (toExpQ fn, attr))
 {-# INLINE node #-}
 
 -- | many-to-one generalized link function
@@ -140,6 +140,7 @@ trimDAG st dag = gmap revise gr
           where children = map (fst . fromJust . lab dag) $ suc dag i
     done x = getStatus x == Finished
     getStatus x = M.findWithDefault Scheduled x $ st^.procStatus
+{-# INLINE trimDAG #-}
 
 mkWorkflow :: String -> DAG -> Q [Dec]
 mkWorkflow wfName dag = do
@@ -163,12 +164,8 @@ mkWorkflow wfName dag = do
         connect xs t = [| $(foldl g e0 $ tail xs) >=> $(define t) |]
           where
             e0 = [| (fmap.fmap) $(conE (tupleDataName $ length xs)) $(go $ head xs) |]
-            g acc x = [| $(acc) <**> $(go x) |]
+            g acc x = [| ((<*>) . fmap (<*>)) $(acc) $(go x) |]
 {-# INLINE mkWorkflow #-}
-
-(<**>) :: (Applicative f1, Applicative f2, Functor f1, Functor f2) => f1 (f2 (a -> b)) -> f1 (f2 a) -> f1 (f2 b)
-(<**>) = (<*>) . fmap (<*>)
-{-# INLINE (<**>) #-}
 
 mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
 mkProc p f = \input -> do
@@ -184,3 +181,4 @@ mkProc p f = \input -> do
 
             (procStatus . at p) .= Just Finished
             return result
+{-# INLINE mkProc #-}
