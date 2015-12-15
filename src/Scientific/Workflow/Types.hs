@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Scientific.Workflow.Types
@@ -16,7 +17,9 @@ module Scientific.Workflow.Types
     , defaultRunOpt
     , dbPath
     , Serializable(..)
-    , Attribute(..)
+    , Attribute
+    , defaultAttribute
+    , label
     , note
     , def
     ) where
@@ -36,7 +39,6 @@ class Serializable a where
 instance (FromJSON a, ToJSON a) => Serializable a where
     serialize = encode
     deserialize = fromJust . decode
-
 
 data WorkflowDB  = WorkflowDB FilePath
 
@@ -69,7 +71,14 @@ defaultRunOpt = RunOpt
     { _dbPath = "wfDB" }
 
 data Attribute = Attribute
-    { _note :: T.Text
+    { _label :: T.Text  -- ^ short description
+    , _note :: T.Text   -- ^ long description
+    }
+
+defaultAttribute :: Attribute
+defaultAttribute = Attribute
+    { _label = ""
+    , _note = ""
     }
 
 makeLenses ''Attribute

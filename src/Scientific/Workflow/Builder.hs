@@ -59,7 +59,6 @@ node :: ToExpQ q => PID -> q -> State Attribute () -> Builder ()
 node p fn setAttr = modify $ _1 %~ (newNode:)
   where
     attr = execState setAttr defaultAttribute
-    defaultAttribute = Attribute ""
     newNode = (p, (toExpQ fn, attr))
 {-# INLINE node #-}
 
