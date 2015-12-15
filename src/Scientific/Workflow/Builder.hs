@@ -13,6 +13,7 @@ module Scientific.Workflow.Builder
     , buildWorkflow
     , buildWorkflowPart
     , getWorkflowState
+    , mkDAG
     ) where
 
 import Control.Lens ((^.), (%~), _1, _2, _3, at, (.=))

@@ -7,6 +7,7 @@ module Functions
     , builder
     ) where
 
+import Control.Lens
 import Scientific.Workflow
 
 input :: () -> Int
@@ -24,11 +25,11 @@ combine = \(a,b) -> 2 * (a + b)
 -- builder monad
 builder :: Builder ()
 builder = do
-    node "id000" [| return <$> input |] def
-    node "id001" [| return <$> plus1 |] def
-    node "id002" [| return <$> (*2) |] def
-    node "id003" [| return <$> combine |] def
-    node "id004" [| return <$> mul2 |] def
+    node "id000" [| return <$> input |] $ note .= "input"
+    node "id001" [| return <$> plus1 |] $ note .= "+ 1"
+    node "id002" [| return <$> (*2) |] $ note .= "* 2"
+    node "id003" [| return <$> combine |] $ note .= "+"
+    node "id004" [| return <$> mul2 |] $ note .= "* 2"
 
     ["id000"] ~> "id001"
     ["id000"] ~> "id002"

@@ -1,8 +1,17 @@
 {-# LANGUAGE TemplateHaskell #-}
-import Scientific.Workflow
+
+import System.Environment
+
 import qualified Functions as F
 
-buildWorkflowPart "wf" F.builder def
+import Scientific.Workflow
+import Scientific.Workflow.Visualize
+
+buildWorkflow "wf" F.builder
 
 main :: IO ()
-main = runWorkflow wf def
+main = do
+    (cmd:args) <- getArgs
+    case cmd of
+        "run" -> runWorkflow wf def
+        "view" -> putStrLn $ builderToDotString F.builder

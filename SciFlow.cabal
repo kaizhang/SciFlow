@@ -29,6 +29,7 @@ library
     Scientific.Workflow.Builder
     Scientific.Workflow.DB
     Scientific.Workflow.Types
+    Scientific.Workflow.Visualize
 
   if flag(debug)
     CPP-Options: -DDEBUG
@@ -40,6 +41,7 @@ library
     , bytestring
     , data-default-class
     , fgl
+    , graphviz
     , lens >=4.0
     , mtl
     , optparse-applicative
