@@ -122,10 +122,11 @@ mkDAG b = mkGraph ns' es'
     ns' = map (\x -> (pid2nid $ fst x, x)) ns
     es' = map (\(fr, t, o) -> (pid2nid fr, pid2nid t, o)) es
     (ns, es) = execState b ([], [])
-    pid2nid p = M.findWithDefault (error "mkDAG") p m
+    pid2nid p = M.findWithDefault errMsg p m
       where
         m = M.fromListWithKey err $ zip (map fst ns) [0..]
         err k _ _ = error $ "multiple instances for: " ++ T.unpack k
+        errMsg = error $ "mkDAG: cannot identify node: " ++ T.unpack p
 {-# INLINE mkDAG #-}
 
 trimDAG :: WorkflowState -> DAG -> DAG
