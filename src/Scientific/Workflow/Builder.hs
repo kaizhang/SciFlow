@@ -48,14 +48,23 @@ instance T.Lift T.Text where
   lift t = [| T.pack $(T.lift $ T.unpack t) |]
 
 
+-- | The order of edges
 type EdgeOrd = Int
+
+-- | A computation node
 type Node = (PID, (ExpQ, Attribute))
+
+-- | Links between computational nodes
 type Edge = (PID, PID, EdgeOrd)
 
 type Builder = State ([Node], [Edge])
 
 -- | Declare a computational node
-node :: ToExpQ q => PID -> q -> State Attribute () -> Builder ()
+node :: ToExpQ q
+     => PID                  -- ^ node id
+     -> q                    -- ^ function
+     -> State Attribute ()   -- ^ Attribues
+     -> Builder ()
 node p fn setAttr = modify $ _1 %~ (newNode:)
   where
     attr = execState setAttr defaultAttribute
@@ -79,11 +88,14 @@ path ns = foldM_ f (head ns) $ tail ns
     f a t = link [a] t >> return t
 {-# INLINE path #-}
 
+-- | Build the workflow.
 buildWorkflow :: String
               -> Builder ()
               -> Q [Dec]
 buildWorkflow wfName b = mkWorkflow wfName $ mkDAG b
 
+-- | Build only a part of the workflow that has not been executed. This is used
+-- during development for fast compliation.
 buildWorkflowPart :: State RunOpt ()
                   -> String
                   -> Builder ()
@@ -116,6 +128,7 @@ instance ToExpQ ExpQ where
 
 type DAG = Gr Node EdgeOrd
 
+-- | Contruct a DAG representing the workflow
 mkDAG :: Builder () -> DAG
 mkDAG b = mkGraph ns' es'
   where
@@ -129,20 +142,23 @@ mkDAG b = mkGraph ns' es'
         errMsg = error $ "mkDAG: cannot identify node: " ++ T.unpack p
 {-# INLINE mkDAG #-}
 
+-- | Remove nodes that are executed before from a DAG.
 trimDAG :: WorkflowState -> DAG -> DAG
 trimDAG st dag = gmap revise gr
   where
-    revise c | done (c^._3._1) && null (c^._1) = _3._2._1 %~ e $ c
-            | otherwise = c
-      where e x = [| const undefined >=> $(x) |]
+    revise context@(linkTo, nd, lab, linkFrom)
+        | done (fst lab) && null linkTo = _3._2._1 %~ e $ context
+        | otherwise = context
+      where
+        e x = [| const undefined >=> $(x) |]
     gr = labnfilter f dag
       where
         f (i, (x,_)) = (not . done) x || any (not . done) children
           where children = map (fst . fromJust . lab dag) $ suc dag i
-    done x = getStatus x == Finished
-    getStatus x = M.findWithDefault Scheduled x $ st^.procStatus
+    done x = M.lookup x (st^.procStatus) == Just Finished
 {-# INLINE trimDAG #-}
 
+-- | Generate codes from a DAG
 mkWorkflow :: String -> DAG -> Q [Dec]
 mkWorkflow wfName dag = do
     decNode <- concat <$> mapM (f . snd) ns

@@ -17,6 +17,7 @@ import Data.GraphViz.Attributes.Complete
 import Scientific.Workflow.Types (note)
 import Scientific.Workflow.Builder
 
+-- | Print the computation graph
 renderBuilder :: Builder () -> TL.Text
 renderBuilder b = renderDot . toDot $ graphToDot param dag
   where

@@ -40,10 +40,13 @@ instance (FromJSON a, ToJSON a) => Serializable a where
     serialize = encode
     deserialize = fromJust . decode
 
+-- | An abstract type representing the database used to store states of workflow
 data WorkflowDB  = WorkflowDB FilePath
 
+-- | The id of a node
 type PID = T.Text
 
+-- | The state of a computation node
 data ProcState = Finished
                | Scheduled
     deriving (Eq)
