@@ -4,9 +4,7 @@ module Scientific.Workflow.Visualize
     ) where
 
 import Control.Lens
-import Scientific.Workflow.Types
-import           Shelly              (fromText, lsT, shelly, test_f, mkdir_p)
-import qualified Data.ByteString     as B
+import Scientific.Workflow.Types (label)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy      as TL
 
