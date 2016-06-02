@@ -17,6 +17,7 @@ module Scientific.Workflow.Builder
     ) where
 
 import Control.Lens ((^.), (%~), _1, _2, _3, at, (.=))
+import Control.Exception (try, displayException, SomeException)
 import           Control.Monad.State
 import qualified Data.Text           as T
 import Data.Graph.Inductive.Graph
@@ -112,7 +113,7 @@ getWorkflowState dir = do
     ks <- getKeys db
     pSt <- mapM (flip isFinished db) ks
     let pSts = M.fromList $ zipWith (\k s ->
-                 if s then (k, Finished) else (k, Scheduled)) ks pSt
+                 if s then (k, Success) else (k, Scheduled)) ks pSt
     return $ WorkflowState db pSts
 {-# INLINE getWorkflowState #-}
 
@@ -155,7 +156,7 @@ trimDAG st dag = gmap revise gr
       where
         f (i, (x,_)) = (not . done) x || any (not . done) children
           where children = map (fst . fromJust . lab dag) $ suc dag i
-    done x = M.lookup x (st^.procStatus) == Just Finished
+    done x = M.lookup x (st^.procStatus) == Just Success
 {-# INLINE trimDAG #-}
 
 -- | Generate codes from a DAG
@@ -185,17 +186,25 @@ mkWorkflow wfName dag = do
 {-# INLINE mkWorkflow #-}
 
 mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
-mkProc p f = \input -> do
+mkProc pid f = \input -> do
     st <- get
-    case M.findWithDefault Scheduled p (st^.procStatus) of
-        Finished -> lift $ readData p $ st^.db
+    case M.findWithDefault Scheduled pid (st^.procStatus) of
+        Fail _ -> mzero
+        Success -> do
+            r <- liftIO $ readData pid $ st^.db
+            return r
         Scheduled -> do
 #ifdef DEBUG
-            traceM $ "Running node: " ++ T.unpack p
+            traceM $ "Running node: " ++ T.unpack pid
 #endif
-            result <- lift $ f input
-            lift $ saveData p result $ st^.db
 
-            (procStatus . at p) .= Just Finished
-            return result
+            result <- liftIO $ try $ f input
+            case result of
+                Left ex -> do
+                    (procStatus . at pid) .= Just (Fail $ displayException (ex :: SomeException))
+                    mzero
+                Right r -> do
+                    liftIO $ saveData pid r $ st^.db
+                    (procStatus . at pid) .= Just Success
+                    return r
 {-# INLINE mkProc #-}

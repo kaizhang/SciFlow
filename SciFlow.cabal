@@ -52,6 +52,7 @@ library
     , th-lift
     , text
     , template-haskell
+    , transformers
     , containers
     , yaml
 

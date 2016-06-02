@@ -6,6 +6,7 @@ module Scientific.Workflow
     ) where
 
 import           Control.Monad.State
+import Control.Monad.Trans.Maybe
 
 import           Scientific.Workflow.Builder
 import           Scientific.Workflow.Types
@@ -17,5 +18,7 @@ runWorkflow wfs setOpt = do
   where
     opt = execState setOpt defaultRunOpt
     f config (Workflow wf) = do
-        (_, config') <- runStateT (wf ()) config
-        return config'
+        result <- runMaybeT $ runStateT (wf ()) config
+        case result of
+            Just (_, config') -> return config'
+            _ -> return config

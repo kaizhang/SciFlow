@@ -26,6 +26,7 @@ module Scientific.Workflow.Types
 
 import Control.Lens (makeLenses)
 import           Control.Monad.State
+import Control.Monad.Trans.Maybe (MaybeT)
 import qualified Data.ByteString     as B
 import qualified Data.Map            as M
 import qualified Data.Text           as T
@@ -47,8 +48,9 @@ data WorkflowDB  = WorkflowDB FilePath
 type PID = T.Text
 
 -- | The state of a computation node
-data ProcState = Finished
+data ProcState = Success
                | Scheduled
+               | Fail String
     deriving (Eq)
 
 data WorkflowState = WorkflowState
@@ -58,7 +60,7 @@ data WorkflowState = WorkflowState
 
 makeLenses ''WorkflowState
 
-type Processor a b = a -> StateT WorkflowState IO b
+type Processor a b = a -> StateT WorkflowState (MaybeT IO) b
 
 data Workflow where
     Workflow :: (Processor () o) -> Workflow
