@@ -5,13 +5,14 @@ module Scientific.Workflow
     , module Scientific.Workflow.Types
     ) where
 
+import           Control.Exception           (displayException)
 import           Control.Monad.State
-import Control.Monad.Trans.Except
-import Control.Exception (displayException)
+import           Control.Monad.Trans.Except
 
 import           Scientific.Workflow.Builder
 import           Scientific.Workflow.Types
-import System.IO
+import           System.IO
+import Text.Printf (printf)
 
 runWorkflow :: [Workflow] -> State RunOpt () -> IO ()
 runWorkflow wfs setOpt = do
@@ -23,6 +24,8 @@ runWorkflow wfs setOpt = do
         result <- runExceptT $ runStateT (wf ()) config
         case result of
             Right (_, config') -> return config'
-            Left ex -> do
-                hPutStrLn stderr $ displayException ex
+            Left (pid, ex) -> do
+                hPutStrLn stderr $ printf
+                    "[ERR] \"%s\" failed. The error was: %s"
+                    pid (displayException ex)
                 return config

@@ -3,15 +3,16 @@ module Scientific.Workflow.DB
     ( openDB
     , readData
     , saveData
+    , delRecord
     , isFinished
     , getKeys
     ) where
 
-import Scientific.Workflow.Types
-import qualified Data.ByteString     as B
-import qualified Data.Text           as T
-import Database.SQLite.Simple
-import Text.Printf (printf)
+import qualified Data.ByteString           as B
+import qualified Data.Text                 as T
+import           Database.SQLite.Simple
+import           Scientific.Workflow.Types
+import           Text.Printf               (printf)
 
 dbTableName :: String
 dbTableName = "SciFlowDB"
@@ -61,3 +62,8 @@ getKeys :: WorkflowDB -> IO [PID]
 getKeys (WorkflowDB db) = concat <$> query_ db (Query $ T.pack $
     printf "SELECT pid FROM %s;" dbTableName)
 {-# INLINE getKeys #-}
+
+delRecord :: PID -> WorkflowDB -> IO ()
+delRecord pid (WorkflowDB db) =
+    execute db (Query $ T.pack $ printf
+        "DELETE FROM %s WHERE pid = ?" dbTableName) [pid]

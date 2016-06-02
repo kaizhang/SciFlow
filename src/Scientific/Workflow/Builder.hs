@@ -193,20 +193,20 @@ mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
 mkProc pid f = \input -> do
     st <- get
     case M.findWithDefault Scheduled pid (st^.procStatus) of
-        Fail ex -> lift $ throwE ex
+        Fail ex -> lift $ throwE (pid, ex)
         Success -> do
             r <- liftIO $ readData pid $ st^.db
             return r
         Scheduled -> do
 #ifdef DEBUG
-            traceM $ "Running node: " ++ T.unpack pid
+            traceM $ "[DEBUG] Running node: " ++ T.unpack pid
 #endif
 
             result <- liftIO $ try $ f input
             case result of
                 Left ex -> do
                     (procStatus . at pid) .= Just (Fail ex)
-                    lift $ throwE ex
+                    lift $ throwE (pid, ex)
                 Right r -> do
                     liftIO $ saveData pid r $ st^.db
                     (procStatus . at pid) .= Just Success

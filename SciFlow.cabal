@@ -36,8 +36,6 @@ library
 
   if flag(debug)
     CPP-Options: -DDEBUG
-  else
-    CPP-Options: -DNDEBUG
 
   build-depends:
       base >=4.0 && <5.0

@@ -1,8 +1,8 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Scientific.Workflow.Types
     ( WorkflowDB(..)
@@ -24,16 +24,16 @@ module Scientific.Workflow.Types
     , def
     ) where
 
-import Control.Lens (makeLenses)
+import           Control.Exception          (SomeException)
+import           Control.Lens               (makeLenses)
 import           Control.Monad.State
-import Control.Monad.Trans.Except (ExceptT)
-import Control.Exception (SomeException)
-import Database.SQLite.Simple (Connection)
-import qualified Data.ByteString     as B
-import qualified Data.Map            as M
-import qualified Data.Text           as T
-import Data.Maybe (fromJust)
-import Data.Yaml (FromJSON, ToJSON, encode, decode)
+import           Control.Monad.Trans.Except (ExceptT)
+import qualified Data.ByteString            as B
+import qualified Data.Map                   as M
+import           Data.Maybe                 (fromJust)
+import qualified Data.Text                  as T
+import           Data.Yaml                  (FromJSON, ToJSON, decode, encode)
+import           Database.SQLite.Simple     (Connection)
 
 class Serializable a where
     serialize :: a -> B.ByteString
@@ -61,7 +61,7 @@ data WorkflowState = WorkflowState
 
 makeLenses ''WorkflowState
 
-type Processor a b = a -> StateT WorkflowState (ExceptT SomeException IO) b
+type Processor a b = a -> StateT WorkflowState (ExceptT (PID, SomeException) IO) b
 
 data Workflow where
     Workflow :: (Processor () o) -> Workflow
@@ -78,7 +78,7 @@ defaultRunOpt = RunOpt
 
 data Attribute = Attribute
     { _label :: T.Text  -- ^ short description
-    , _note :: T.Text   -- ^ long description
+    , _note  :: T.Text   -- ^ long description
     }
 
 defaultAttribute :: Attribute
