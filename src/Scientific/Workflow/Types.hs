@@ -28,6 +28,7 @@ import Control.Lens (makeLenses)
 import           Control.Monad.State
 import Control.Monad.Trans.Except (ExceptT)
 import Control.Exception (SomeException)
+import Database.SQLite.Simple (Connection)
 import qualified Data.ByteString     as B
 import qualified Data.Map            as M
 import qualified Data.Text           as T
@@ -43,7 +44,7 @@ instance (FromJSON a, ToJSON a) => Serializable a where
     deserialize = fromJust . decode
 
 -- | An abstract type representing the database used to store states of workflow
-data WorkflowDB  = WorkflowDB FilePath
+data WorkflowDB  = WorkflowDB Connection
 
 -- | The id of a node
 type PID = T.Text
@@ -73,7 +74,7 @@ makeLenses ''RunOpt
 
 defaultRunOpt :: RunOpt
 defaultRunOpt = RunOpt
-    { _dbPath = "wfDB" }
+    { _dbPath = "sciflow.db" }
 
 data Attribute = Attribute
     { _label :: T.Text  -- ^ short description

@@ -49,12 +49,14 @@ library
     , optparse-applicative
     , shelly
     , split
+    , sqlite-simple
     , th-lift
     , text
     , template-haskell
     , transformers
     , containers
     , yaml
+    , string-conversions
 
   hs-source-dirs:      src
   default-language:    Haskell2010
