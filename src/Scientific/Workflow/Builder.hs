@@ -17,7 +17,8 @@ module Scientific.Workflow.Builder
     ) where
 
 import Control.Lens ((^.), (%~), _1, _2, _3, at, (.=))
-import Control.Exception (try, displayException, SomeException)
+import Control.Exception (try, displayException)
+import Control.Monad.Trans.Except (throwE)
 import           Control.Monad.State
 import qualified Data.Text           as T
 import Data.Graph.Inductive.Graph
@@ -156,7 +157,9 @@ trimDAG st dag = gmap revise gr
       where
         f (i, (x,_)) = (not . done) x || any (not . done) children
           where children = map (fst . fromJust . lab dag) $ suc dag i
-    done x = M.lookup x (st^.procStatus) == Just Success
+    done x = case M.lookup x (st^.procStatus) of
+        Just Success -> True
+        _ -> False
 {-# INLINE trimDAG #-}
 
 -- | Generate codes from a DAG
@@ -189,7 +192,7 @@ mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
 mkProc pid f = \input -> do
     st <- get
     case M.findWithDefault Scheduled pid (st^.procStatus) of
-        Fail _ -> mzero
+        Fail ex -> lift $ throwE ex
         Success -> do
             r <- liftIO $ readData pid $ st^.db
             return r
@@ -201,8 +204,8 @@ mkProc pid f = \input -> do
             result <- liftIO $ try $ f input
             case result of
                 Left ex -> do
-                    (procStatus . at pid) .= Just (Fail $ displayException (ex :: SomeException))
-                    mzero
+                    (procStatus . at pid) .= Just (Fail ex)
+                    lift $ throwE ex
                 Right r -> do
                     liftIO $ saveData pid r $ st^.db
                     (procStatus . at pid) .= Just Success

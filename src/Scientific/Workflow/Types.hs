@@ -26,7 +26,8 @@ module Scientific.Workflow.Types
 
 import Control.Lens (makeLenses)
 import           Control.Monad.State
-import Control.Monad.Trans.Maybe (MaybeT)
+import Control.Monad.Trans.Except (ExceptT)
+import Control.Exception (SomeException)
 import qualified Data.ByteString     as B
 import qualified Data.Map            as M
 import qualified Data.Text           as T
@@ -50,8 +51,7 @@ type PID = T.Text
 -- | The state of a computation node
 data ProcState = Success
                | Scheduled
-               | Fail String
-    deriving (Eq)
+               | Fail SomeException
 
 data WorkflowState = WorkflowState
     { _db         :: WorkflowDB
@@ -60,7 +60,7 @@ data WorkflowState = WorkflowState
 
 makeLenses ''WorkflowState
 
-type Processor a b = a -> StateT WorkflowState (MaybeT IO) b
+type Processor a b = a -> StateT WorkflowState (ExceptT SomeException IO) b
 
 data Workflow where
     Workflow :: (Processor () o) -> Workflow

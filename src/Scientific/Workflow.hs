@@ -6,10 +6,12 @@ module Scientific.Workflow
     ) where
 
 import           Control.Monad.State
-import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Except
+import Control.Exception (displayException)
 
 import           Scientific.Workflow.Builder
 import           Scientific.Workflow.Types
+import System.IO
 
 runWorkflow :: [Workflow] -> State RunOpt () -> IO ()
 runWorkflow wfs setOpt = do
@@ -18,7 +20,9 @@ runWorkflow wfs setOpt = do
   where
     opt = execState setOpt defaultRunOpt
     f config (Workflow wf) = do
-        result <- runMaybeT $ runStateT (wf ()) config
+        result <- runExceptT $ runStateT (wf ()) config
         case result of
-            Just (_, config') -> return config'
-            _ -> return config
+            Right (_, config') -> return config'
+            Left ex -> do
+                hPutStrLn stderr $ displayException ex
+                return config
