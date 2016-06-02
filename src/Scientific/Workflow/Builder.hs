@@ -61,6 +61,7 @@ type Edge = (PID, PID, EdgeOrd)
 
 type Builder = State ([Node], [Edge])
 
+
 -- | Declare a computational node
 node :: ToExpQ q
      => PID                  -- ^ node id

@@ -8,20 +8,20 @@ import Scientific.Workflow.Types (label)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy      as TL
 
-import Data.GraphViz
-import Data.GraphViz.Printing
-import Data.GraphViz.Attributes.Complete
+import qualified Data.GraphViz as G
+import qualified Data.GraphViz.Printing as G
+import qualified Data.GraphViz.Attributes.Complete as G
+import Data.Graph.Inductive.PatriciaTree (Gr)
 
-import Scientific.Workflow.Types (note)
+import Scientific.Workflow.Types
 import Scientific.Workflow.Builder
 
 -- | Print the computation graph
-renderBuilder :: Builder () -> TL.Text
-renderBuilder b = renderDot . toDot $ graphToDot param dag
+renderBuilder :: Gr (PID, Attribute) Int -> TL.Text
+renderBuilder dag = G.renderDot . G.toDot $ G.graphToDot param dag
   where
-    fmtnode (_, (p, (_, attr))) = [Label $ StrLabel $ TL.fromStrict lab]
+    fmtnode (_, (p, attr)) = [G.Label $ G.StrLabel $ TL.fromStrict lab]
       where
         lab | T.null (attr^.label) = p
             | otherwise = attr^.label
-    dag = mkDAG b
-    param = nonClusteredParams{fmtNode = fmtnode}
+    param = G.nonClusteredParams{G.fmtNode = fmtnode}

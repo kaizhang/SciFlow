@@ -8,7 +8,6 @@ module Scientific.Workflow.DB
     ) where
 
 import Scientific.Workflow.Types
-import           Shelly              (fromText, lsT, shelly, test_f, mkdir_p)
 import qualified Data.ByteString     as B
 import qualified Data.Text           as T
 import Database.SQLite.Simple

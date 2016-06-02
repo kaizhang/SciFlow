@@ -17,7 +17,7 @@ module Scientific.Workflow.Types
     , defaultRunOpt
     , dbPath
     , Serializable(..)
-    , Attribute
+    , Attribute(..)
     , defaultAttribute
     , label
     , note
