@@ -37,7 +37,6 @@ import Data.List (sortBy)
 import Data.Maybe (fromJust)
 import Data.Ord (comparing)
 import qualified Data.Map as M
-import qualified Data.HashTable.IO as H
 import System.IO.Unsafe (unsafePerformIO)
 
 import           Language.Haskell.TH
@@ -116,8 +115,7 @@ getWorkflowState dir = do
     db <- openDB dir
     ks <- getKeys db
     vs <- replicateM (length ks) $ newMVar Success
-    pSt <- H.fromList $ zip ks vs
-    return $ WorkflowState db pSt
+    return $ WorkflowState db $ M.fromList $ zip ks vs
 {-# INLINE getWorkflowState #-}
 
 -- | Objects that can be converted to ExpQ
@@ -159,25 +157,29 @@ trimDAG st dag = gmap revise gr
       where
         f (i, (x,_)) = (not . done) x || any (not . done) children
           where children = map (fst . fromJust . lab dag) $ suc dag i
-    done x = unsafePerformIO $ do
-        r <- H.lookup (st^.procStatus) x
-        case r of
-            Nothing -> return False
-            Just v -> do
-                v' <- tryReadMVar v
-                case v' of
-                    Just Success -> return True
-                    _ -> return False
+    done x = case M.lookup x (st^.procStatus) of
+        Nothing -> False
+        Just v -> unsafePerformIO $ do
+            v' <- tryReadMVar v
+            case v' of
+                Just Success -> return True
+                _ -> return False
 {-# INLINE trimDAG #-}
 
 -- | Generate codes from a DAG
 mkWorkflow :: String -> DAG -> Q [Dec]
 mkWorkflow wfName dag = do
+    -- write node funcitons
     decNode <- concat <$> mapM (f . snd) ns
-    decWf <- [d| $(varP $ mkName wfName) = $(fmap ListE $ mapM linking leafNodes)
+
+    -- define workflows
+    decWf <- [d| $(varP $ mkName wfName) =
+                    ( pids
+                    , $(fmap ListE $ mapM linking leafNodes) )
              |]
     return $ decNode ++ decWf
   where
+    pids = fst $ unzip $ snd $ unzip ns
     f (p, (fn, _)) = [d| $(varP $ mkName $ T.unpack p) = mkProc p $(fn) |]
     ns = labNodes dag
     leafNodes = filter ((==0) . outdeg dag . fst) ns
@@ -198,33 +200,26 @@ mkWorkflow wfName dag = do
 
 mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
 mkProc pid f = \input -> do
-    st <- get
-    pstatus <- liftIO $ H.lookup (st^.procStatus) pid
-    case pstatus of
-        Nothing -> do
-            pst <- liftIO newEmptyMVar
-            liftIO $ H.insert (st^.procStatus) pid pst
+    wfState <- get
+    let pSt = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
+    pStValue <- liftIO $ takeMVar pSt
+    case pStValue of
+        (Fail ex) -> liftIO (putMVar pSt pStValue) >> lift (throwE (pid, ex))
+        Success -> liftIO $ do
+            putMVar pSt pStValue
+#ifdef DEBUG
+            debug $ "Recovering saved node: " ++ T.unpack pid
+#endif
+            readData pid $ wfState^.db
+        Scheduled -> do
 #ifdef DEBUG
             debug $ "Running node: " ++ T.unpack pid
 #endif
             result <- liftIO $ try $ f input
             case result of
-                Left ex -> do
-                    liftIO $ putMVar pst $ Fail ex
-                    lift $ throwE (pid, ex)
-                Right r -> do
-                    liftIO $ do
-                        saveData pid r $ st^.db
-                        putMVar pst Success
+                Left ex -> liftIO (putMVar pSt $ Fail ex) >> lift (throwE (pid, ex))
+                Right r -> liftIO $ do
+                    saveData pid r $ wfState^.db
+                    putMVar pSt Success
                     return r
-        Just pst -> do
-            s <- liftIO $ takeMVar pst
-            liftIO $ putMVar pst s
-            case s of
-                (Fail ex) -> lift $ throwE (pid, ex)
-                Success -> do
-#ifdef DEBUG
-                    debug $ "Recovering saved node: " ++ T.unpack pid
-#endif
-                    liftIO $ readData pid $ st^.db
 {-# INLINE mkProc #-}

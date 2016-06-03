@@ -6,6 +6,7 @@
 module Scientific.Workflow.Main where
 
 import           Control.Monad.State
+import qualified Data.ByteString.Char8             as B
 import           Data.Graph.Inductive.Graph        (labEdges, labNodes, mkGraph,
                                                     nmap)
 import           Data.Graph.Inductive.PatriciaTree (Gr (..))
@@ -32,7 +33,7 @@ defaultMain builder = do
     wfName = "sciFlowDefaultMain"
     dag = nmap (\(a,(_,b)) -> (a,b)) $ mkDAG builder
 
-mainFunc :: Gr (PID, Attribute) Int -> [Workflow] -> IO ()
+mainFunc :: Gr (PID, Attribute) Int -> Workflows -> IO ()
 mainFunc dag wf = do
     (cmd:args) <- getArgs
     case cmd of
@@ -41,5 +42,9 @@ mainFunc dag wf = do
         "rm" -> do
             db <- openDB $ _dbPath opt
             delRecord (T.pack $ head args) db
+        "read" -> do
+            db <- openDB $ _dbPath opt
+            dat <- readDataByteString (T.pack $ head args) db
+            B.putStrLn dat
   where
     opt = execState (return ()) defaultRunOpt

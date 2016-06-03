@@ -44,7 +44,6 @@ library
     , containers
     , fgl
     , graphviz
-    , hashtables
     , lens >=4.0
     , mtl
     , optparse-applicative

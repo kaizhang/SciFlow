@@ -7,6 +7,7 @@
 module Scientific.Workflow.Types
     ( WorkflowDB(..)
     , Workflow(..)
+    , Workflows
     , PID
     , ProcState(..)
     , WorkflowState(..)
@@ -14,14 +15,15 @@ module Scientific.Workflow.Types
     , procStatus
     , Processor
     , RunOpt(..)
+    , RunOptSetter
     , defaultRunOpt
     , dbPath
     , Serializable(..)
     , Attribute(..)
+    , AttributeSetter
     , defaultAttribute
     , label
     , note
-    , def
     ) where
 
 import           Control.Exception          (SomeException)
@@ -34,7 +36,7 @@ import qualified Data.Text                  as T
 import           Data.Yaml                  (FromJSON, ToJSON, decode, encode)
 import           Database.SQLite.Simple     (Connection)
 import Control.Concurrent.MVar
-import qualified Data.HashTable.IO as M
+import qualified Data.Map as M
 
 class Serializable a where
     serialize :: a -> B.ByteString
@@ -53,18 +55,24 @@ type PID = T.Text
 -- | The state of a computation node
 data ProcState = Success
                | Fail SomeException
+               | Scheduled
 
 data WorkflowState = WorkflowState
     { _db         :: WorkflowDB
-    , _procStatus :: M.CuckooHashTable PID (MVar ProcState)
+    , _procStatus :: M.Map PID (MVar ProcState)
     }
 
 makeLenses ''WorkflowState
 
 type Processor a b = a -> StateT WorkflowState (ExceptT (PID, SomeException) IO) b
 
+-- | An Workflow is a DAG without loop and branches
 data Workflow where
     Workflow :: (Processor () o) -> Workflow
+
+-- | A list of workflows and ids of all nodes
+type Workflows = ([PID], [Workflow])
+
 
 data RunOpt = RunOpt
     { _dbPath :: FilePath
@@ -76,10 +84,16 @@ defaultRunOpt :: RunOpt
 defaultRunOpt = RunOpt
     { _dbPath = "sciflow.db" }
 
+type RunOptSetter = State RunOpt ()
+
+
+-- | Node attribute
 data Attribute = Attribute
     { _label :: T.Text  -- ^ short description
     , _note  :: T.Text   -- ^ long description
     }
+
+makeLenses ''Attribute
 
 defaultAttribute :: Attribute
 defaultAttribute = Attribute
@@ -87,7 +101,4 @@ defaultAttribute = Attribute
     , _note = ""
     }
 
-makeLenses ''Attribute
-
-def :: State a ()
-def = return ()
+type AttributeSetter = State Attribute ()

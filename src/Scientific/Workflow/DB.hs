@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Scientific.Workflow.DB
     ( openDB
+    , closeDB
     , readData
+    , readDataByteString
     , saveData
     , delRecord
     , isFinished
@@ -39,12 +41,23 @@ openDB dbFile = do
             return $ WorkflowDB db
 {-# INLINE openDB #-}
 
+closeDB :: WorkflowDB -> IO ()
+closeDB (WorkflowDB db) = close db
+{-# INLINE closeDB #-}
+
 readData :: Serializable r => PID -> WorkflowDB -> IO r
 readData pid (WorkflowDB db) = do
     [Only result] <- query db (Query $ T.pack $
         printf "SELECT data FROM %s WHERE pid = ?" dbTableName) [pid]
     return $ deserialize result
 {-# INLINE readData #-}
+
+readDataByteString :: PID -> WorkflowDB -> IO B.ByteString
+readDataByteString pid (WorkflowDB db) = do
+    [Only result] <- query db (Query $ T.pack $
+        printf "SELECT data FROM %s WHERE pid = ?" dbTableName) [pid]
+    return result
+{-# INLINE readDataByteString #-}
 
 saveData :: Serializable r => PID -> r -> WorkflowDB -> IO ()
 saveData pid result (WorkflowDB db) = execute db (Query $ T.pack $
