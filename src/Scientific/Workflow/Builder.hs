@@ -190,10 +190,10 @@ mkWorkflow wfName dag = do
         define n = varE $ mkName (T.unpack $ (snd n) ^. _1)
         connect [] t = define t
         connect [s1] t = [| $(go s1) >=> $(define t) |]
-        connect xs t = [| $(foldl g e0 $ tail xs) >=> $(define t) |]
+        connect xs t = [| $(foldl g e0 xs) >=> $(define t) |]
           where
-            e0 = [| (fmap.fmap) $(conE (tupleDataName $ length xs)) $(go $ head xs) |]
-            g acc x = [| ((<*>) . fmap (<*>)) $(acc) $(go x) |]
+            e0 = [| (return . return) $(conE (tupleDataName $ length xs)) |]
+            g acc x = [| (ap . fmap ap) $(acc) $(go x) |]
 {-# INLINE mkWorkflow #-}
 
 mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
@@ -222,5 +222,9 @@ mkProc pid f = \input -> do
             liftIO $ putMVar pst s
             case s of
                 (Fail ex) -> lift $ throwE (pid, ex)
-                Success -> liftIO $ readData pid $ st^.db
+                Success -> do
+#ifdef DEBUG
+                    debug $ "Recovering saved node: " ++ T.unpack pid
+#endif
+                    liftIO $ readData pid $ st^.db
 {-# INLINE mkProc #-}

@@ -52,7 +52,6 @@ type PID = T.Text
 
 -- | The state of a computation node
 data ProcState = Success
-               | Scheduled
                | Fail SomeException
 
 data WorkflowState = WorkflowState

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Scientific.Workflow
     ( runWorkflow
     , getWorkflowState
@@ -17,6 +18,9 @@ import Text.Printf (printf)
 runWorkflow :: [Workflow] -> State RunOpt () -> IO ()
 runWorkflow wfs setOpt = do
     config <- getWorkflowState $ _dbPath opt
+#ifdef DEBUG
+    debug $ printf "Executing %d workflow(s)" (length wfs)
+#endif
     foldM_ f config wfs
   where
     opt = execState setOpt defaultRunOpt
