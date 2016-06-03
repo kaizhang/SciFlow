@@ -1,5 +1,5 @@
 name:                SciFlow
-version:             0.4.0
+version:             0.4.1
 synopsis:            Scientific workflow management system
 description:
   SciFlow is to help programmers design complex workflows
