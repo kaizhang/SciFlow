@@ -66,26 +66,14 @@ builder = do
 ---------------------------------------------------
 {-# LANGUAGE TemplateHaskell #-}
 
-import System.Environment
-
 import qualified Functions as F
-import qualified Data.Text.Lazy.IO as T
+import Scientific.Workflow.Main
 
-import Scientific.Workflow
-import Scientific.Workflow.Visualize
-
-buildWorkflow "wf" F.builder
-
-main :: IO ()
-main = do
-    (cmd:args) <- getArgs
-    case cmd of
-        "run" -> runWorkflow wf def
-        "view" -> T.putStrLn $ renderBuilder F.builder
+defaultMain F.builder
 ```
 
 The workflow can be visualized by running `runghc main.hs view | dot -Tpng > example.png`.
 
-![example](examples/example.png)
+![example](example.png)
 
 To run the workflow, simply type `runghc main.hs run`. The program will create a directory to store results of each step. If being terminated prematurely, the program will use the saved data to continue from the last step.

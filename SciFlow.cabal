@@ -16,9 +16,7 @@ cabal-version:       >=1.10
 
 extra-source-files:
   README.md
-  examples/Functions.hs
-  examples/Main.hs
-  examples/example.png
+  example.png
 
 Flag Debug
   Description: Enable debug support
