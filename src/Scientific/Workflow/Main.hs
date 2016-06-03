@@ -1,6 +1,4 @@
-{-# LANGUAGE DeriveLift         #-}
 {-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell    #-}
 
 module Scientific.Workflow.Main where
@@ -19,7 +17,7 @@ import           Scientific.Workflow.DB
 import           Scientific.Workflow.Visualize
 import           System.Environment
 
-deriving instance T.Lift Attribute
+T.deriveLift ''Attribute
 
 instance T.Lift (Gr (PID, Attribute) Int) where
   lift gr = [| uncurry mkGraph $(T.lift (labNodes gr, labEdges gr)) |]

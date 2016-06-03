@@ -4,6 +4,7 @@ module Scientific.Workflow.DB
     , closeDB
     , readData
     , readDataByteString
+    , saveDataByteString
     , saveData
     , delRecord
     , isFinished
@@ -63,6 +64,11 @@ saveData :: Serializable r => PID -> r -> WorkflowDB -> IO ()
 saveData pid result (WorkflowDB db) = execute db (Query $ T.pack $
     printf "INSERT INTO %s VALUES (?, ?)" dbTableName) (pid, serialize result)
 {-# INLINE saveData #-}
+
+saveDataByteString :: PID -> B.ByteString -> WorkflowDB -> IO ()
+saveDataByteString pid result (WorkflowDB db) = execute db (Query $ T.pack $
+    printf "INSERT INTO %s VALUES (?, ?)" dbTableName) (pid, result)
+{-# INLINE saveDataByteString #-}
 
 isFinished :: PID -> WorkflowDB -> IO Bool
 isFinished pid (WorkflowDB db) = do

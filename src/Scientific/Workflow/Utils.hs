@@ -5,7 +5,7 @@ import qualified Data.ByteString.Char8 as B
 import System.IO
 import Rainbow
 
-debug :: Applicative f => String -> f ()
+debug :: Monad m => String -> m ()
 debug txt = traceM $ B.unpack $ B.concat $
     chunksToByteStrings toByteStringsColors8 [prefix, chunk txt & fore green]
   where
