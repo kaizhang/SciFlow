@@ -11,7 +11,7 @@ import           Control.Monad.Trans.Except
 
 import           Scientific.Workflow.Builder
 import           Scientific.Workflow.Types
-import           System.IO
+import           Scientific.Workflow.Utils
 import Text.Printf (printf)
 
 runWorkflow :: [Workflow] -> State RunOpt () -> IO ()
@@ -25,7 +25,6 @@ runWorkflow wfs setOpt = do
         case result of
             Right (_, config') -> return config'
             Left (pid, ex) -> do
-                hPutStrLn stderr $ printf
-                    "[ERR] \"%s\" failed. The error was: %s"
+                error' $ printf "\"%s\" failed. The error was: %s"
                     pid (displayException ex)
                 return config

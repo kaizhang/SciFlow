@@ -20,6 +20,7 @@ import Control.Lens ((^.), (%~), _1, _2, _3, at, (.=))
 import Control.Exception (try, displayException)
 import Control.Monad.Trans.Except (throwE)
 import           Control.Monad.State
+import Control.Concurrent.MVar
 import qualified Data.Text           as T
 import Data.Graph.Inductive.Graph
     ( mkGraph
@@ -33,18 +34,19 @@ import Data.Graph.Inductive.Graph
     , subgraph )
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.List (sortBy)
-import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.Ord (comparing)
-import qualified Data.Map                    as M
+import qualified Data.Map as M
+import qualified Data.HashTable.IO as H
+import System.IO.Unsafe (unsafePerformIO)
 
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift as T
 
 import Scientific.Workflow.Types
 import Scientific.Workflow.DB
+import Scientific.Workflow.Utils (debug)
 
-import Debug.Trace (traceM)
 
 instance T.Lift T.Text where
   lift t = [| T.pack $(T.lift $ T.unpack t) |]
@@ -113,10 +115,9 @@ getWorkflowState :: FilePath -> IO WorkflowState
 getWorkflowState dir = do
     db <- openDB dir
     ks <- getKeys db
-    pSt <- mapM (flip isFinished db) ks
-    let pSts = M.fromList $ zipWith (\k s ->
-                 if s then (k, Success) else (k, Scheduled)) ks pSt
-    return $ WorkflowState db pSts
+    vs <- replicateM (length ks) $ newMVar Success
+    pSt <- H.fromList $ zip ks vs
+    return $ WorkflowState db pSt
 {-# INLINE getWorkflowState #-}
 
 -- | Objects that can be converted to ExpQ
@@ -158,9 +159,15 @@ trimDAG st dag = gmap revise gr
       where
         f (i, (x,_)) = (not . done) x || any (not . done) children
           where children = map (fst . fromJust . lab dag) $ suc dag i
-    done x = case M.lookup x (st^.procStatus) of
-        Just Success -> True
-        _ -> False
+    done x = unsafePerformIO $ do
+        r <- H.lookup (st^.procStatus) x
+        case r of
+            Nothing -> return False
+            Just v -> do
+                v' <- tryReadMVar v
+                case v' of
+                    Just Success -> return True
+                    _ -> return False
 {-# INLINE trimDAG #-}
 
 -- | Generate codes from a DAG
@@ -192,23 +199,28 @@ mkWorkflow wfName dag = do
 mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
 mkProc pid f = \input -> do
     st <- get
-    case M.findWithDefault Scheduled pid (st^.procStatus) of
-        Fail ex -> lift $ throwE (pid, ex)
-        Success -> do
-            r <- liftIO $ readData pid $ st^.db
-            return r
-        Scheduled -> do
+    pstatus <- liftIO $ H.lookup (st^.procStatus) pid
+    case pstatus of
+        Nothing -> do
+            pst <- liftIO newEmptyMVar
+            liftIO $ H.insert (st^.procStatus) pid pst
 #ifdef DEBUG
-            traceM $ "[DEBUG] Running node: " ++ T.unpack pid
+            debug $ "Running node: " ++ T.unpack pid
 #endif
-
             result <- liftIO $ try $ f input
             case result of
                 Left ex -> do
-                    (procStatus . at pid) .= Just (Fail ex)
+                    liftIO $ putMVar pst $ Fail ex
                     lift $ throwE (pid, ex)
                 Right r -> do
-                    liftIO $ saveData pid r $ st^.db
-                    (procStatus . at pid) .= Just Success
+                    liftIO $ do
+                        saveData pid r $ st^.db
+                        putMVar pst Success
                     return r
+        Just pst -> do
+            s <- liftIO $ takeMVar pst
+            liftIO $ putMVar pst s
+            case s of
+                (Fail ex) -> lift $ throwE (pid, ex)
+                Success -> liftIO $ readData pid $ st^.db
 {-# INLINE mkProc #-}

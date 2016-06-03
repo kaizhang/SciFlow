@@ -29,11 +29,12 @@ import           Control.Lens               (makeLenses)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except (ExceptT)
 import qualified Data.ByteString            as B
-import qualified Data.Map                   as M
 import           Data.Maybe                 (fromJust)
 import qualified Data.Text                  as T
 import           Data.Yaml                  (FromJSON, ToJSON, decode, encode)
 import           Database.SQLite.Simple     (Connection)
+import Control.Concurrent.MVar
+import qualified Data.HashTable.IO as M
 
 class Serializable a where
     serialize :: a -> B.ByteString
@@ -56,7 +57,7 @@ data ProcState = Success
 
 data WorkflowState = WorkflowState
     { _db         :: WorkflowDB
-    , _procStatus :: M.Map PID ProcState
+    , _procStatus :: M.CuckooHashTable PID (MVar ProcState)
     }
 
 makeLenses ''WorkflowState

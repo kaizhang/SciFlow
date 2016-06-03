@@ -32,6 +32,7 @@ library
     Scientific.Workflow.DB
     Scientific.Workflow.Main
     Scientific.Workflow.Types
+    Scientific.Workflow.Utils
     Scientific.Workflow.Visualize
 
   if flag(debug)
@@ -40,17 +41,19 @@ library
   build-depends:
       base >=4.0 && <5.0
     , bytestring
+    , containers
     , fgl
     , graphviz
+    , hashtables
     , lens >=4.0
     , mtl
     , optparse-applicative
+    , rainbow
     , sqlite-simple
     , th-lift
     , text
     , template-haskell
     , transformers
-    , containers
     , yaml
 
   hs-source-dirs:      src
