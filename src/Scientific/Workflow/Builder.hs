@@ -45,6 +45,7 @@ import qualified Language.Haskell.TH.Lift as T
 import Scientific.Workflow.Types
 import Scientific.Workflow.DB
 import Scientific.Workflow.Utils (debug)
+import Text.Printf (printf)
 
 
 instance T.Lift T.Text where
@@ -148,7 +149,7 @@ mkDAG b = mkGraph ns' es'
 trimDAG :: WorkflowState -> DAG -> DAG
 trimDAG st dag = gmap revise gr
   where
-    revise context@(linkTo, nd, lab, linkFrom)
+    revise context@(linkTo, _, lab, linkFrom)
         | done (fst lab) && null linkTo = _3._2._1 %~ e $ context
         | otherwise = context
       where
@@ -202,18 +203,22 @@ mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
 mkProc pid f = \input -> do
     wfState <- get
     let pSt = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
+#ifdef DEBUG
+    isEmpty <- liftIO $ isEmptyMVar pSt
+    when isEmpty $ debug $ printf "%s: waiting for other nodes to finish." pid
+#endif
     pStValue <- liftIO $ takeMVar pSt
     case pStValue of
         (Fail ex) -> liftIO (putMVar pSt pStValue) >> lift (throwE (pid, ex))
         Success -> liftIO $ do
             putMVar pSt pStValue
 #ifdef DEBUG
-            debug $ "Recovering saved node: " ++ T.unpack pid
+            debug $ printf "Recovering saved node: %s" pid
 #endif
             readData pid $ wfState^.db
         Scheduled -> do
 #ifdef DEBUG
-            debug $ "Running node: " ++ T.unpack pid
+            debug $ printf "Running node: %s" pid
 #endif
             result <- liftIO $ try $ f input
             case result of

@@ -76,13 +76,16 @@ type Workflows = ([PID], [Workflow])
 
 data RunOpt = RunOpt
     { _dbPath :: FilePath
+    , parallel :: Bool
     }
 
 makeLenses ''RunOpt
 
 defaultRunOpt :: RunOpt
 defaultRunOpt = RunOpt
-    { _dbPath = "sciflow.db" }
+    { _dbPath = "sciflow.db"
+    , parallel = False
+    }
 
 type RunOptSetter = State RunOpt ()
 

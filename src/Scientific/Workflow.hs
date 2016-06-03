@@ -6,6 +6,7 @@ module Scientific.Workflow
     , module Scientific.Workflow.Types
     ) where
 
+import Control.Concurrent.Async (mapConcurrently)
 import           Control.Exception           (displayException, bracket)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
@@ -31,14 +32,14 @@ runWorkflow (pids, wfs) optSetter = bracket (openDB $ _dbPath opts) closeDB $ \d
 #ifdef DEBUG
     debug $ printf "Executing %d workflow(s)" (length wfs)
 #endif
-    foldM_ f initState wfs
+    mapFn (f initState) wfs >> return ()
   where
     opts = execState optSetter defaultRunOpt
+    mapFn | parallel opts = mapConcurrently
+          | otherwise = mapM
     f initState (Workflow wf) = do
-        result <- runExceptT $ runStateT (wf ()) initState
+        result <- runExceptT $ evalStateT (wf ()) initState
         case result of
-            Right (_, finalState) -> return finalState
-            Left (pid, ex) -> do
-                error' $ printf "\"%s\" failed. The error was: %s"
-                    pid (displayException ex)
-                return initState
+            Right _ -> return ()
+            Left (pid, ex) -> error' $ printf "\"%s\" failed. The error was: %s"
+                pid (displayException ex)
