@@ -1,4 +1,6 @@
-flags: {}
+flags:
+    SciFlow:
+        debug: true
 packages:
 - '.'
 extra-deps: []

@@ -20,6 +20,7 @@ import Control.Lens ((^.), (%~), _1, _2, _3, at, (.=))
 import Control.Exception (try, displayException)
 import Control.Monad.Trans.Except (throwE)
 import           Control.Monad.State
+import Control.Concurrent.MVar
 import qualified Data.Text           as T
 import Data.Graph.Inductive.Graph
     ( mkGraph
@@ -33,18 +34,19 @@ import Data.Graph.Inductive.Graph
     , subgraph )
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.List (sortBy)
-import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.Ord (comparing)
-import qualified Data.Map                    as M
+import qualified Data.Map as M
+import System.IO.Unsafe (unsafePerformIO)
 
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift as T
 
 import Scientific.Workflow.Types
 import Scientific.Workflow.DB
+import Scientific.Workflow.Utils (debug)
+import Text.Printf (printf)
 
-import Debug.Trace (traceM)
 
 instance T.Lift T.Text where
   lift t = [| T.pack $(T.lift $ T.unpack t) |]
@@ -60,6 +62,7 @@ type Node = (PID, (ExpQ, Attribute))
 type Edge = (PID, PID, EdgeOrd)
 
 type Builder = State ([Node], [Edge])
+
 
 -- | Declare a computational node
 node :: ToExpQ q
@@ -112,10 +115,8 @@ getWorkflowState :: FilePath -> IO WorkflowState
 getWorkflowState dir = do
     db <- openDB dir
     ks <- getKeys db
-    pSt <- mapM (flip isFinished db) ks
-    let pSts = M.fromList $ zipWith (\k s ->
-                 if s then (k, Success) else (k, Scheduled)) ks pSt
-    return $ WorkflowState db pSts
+    vs <- replicateM (length ks) $ newMVar Success
+    return $ WorkflowState db $ M.fromList $ zip ks vs
 {-# INLINE getWorkflowState #-}
 
 -- | Objects that can be converted to ExpQ
@@ -148,7 +149,7 @@ mkDAG b = mkGraph ns' es'
 trimDAG :: WorkflowState -> DAG -> DAG
 trimDAG st dag = gmap revise gr
   where
-    revise context@(linkTo, nd, lab, linkFrom)
+    revise context@(linkTo, _, lab, linkFrom)
         | done (fst lab) && null linkTo = _3._2._1 %~ e $ context
         | otherwise = context
       where
@@ -158,18 +159,28 @@ trimDAG st dag = gmap revise gr
         f (i, (x,_)) = (not . done) x || any (not . done) children
           where children = map (fst . fromJust . lab dag) $ suc dag i
     done x = case M.lookup x (st^.procStatus) of
-        Just Success -> True
-        _ -> False
+        Nothing -> False
+        Just v -> unsafePerformIO $ do
+            v' <- tryReadMVar v
+            case v' of
+                Just Success -> return True
+                _ -> return False
 {-# INLINE trimDAG #-}
 
 -- | Generate codes from a DAG
 mkWorkflow :: String -> DAG -> Q [Dec]
 mkWorkflow wfName dag = do
+    -- write node funcitons
     decNode <- concat <$> mapM (f . snd) ns
-    decWf <- [d| $(varP $ mkName wfName) = $(fmap ListE $ mapM linking leafNodes)
+
+    -- define workflows
+    decWf <- [d| $(varP $ mkName wfName) =
+                    ( pids
+                    , $(fmap ListE $ mapM linking leafNodes) )
              |]
     return $ decNode ++ decWf
   where
+    pids = fst $ unzip $ snd $ unzip ns
     f (p, (fn, _)) = [d| $(varP $ mkName $ T.unpack p) = mkProc p $(fn) |]
     ns = labNodes dag
     leafNodes = filter ((==0) . outdeg dag . fst) ns
@@ -182,32 +193,38 @@ mkWorkflow wfName dag = do
         define n = varE $ mkName (T.unpack $ (snd n) ^. _1)
         connect [] t = define t
         connect [s1] t = [| $(go s1) >=> $(define t) |]
-        connect xs t = [| $(foldl g e0 $ tail xs) >=> $(define t) |]
+        connect xs t = [| $(foldl g e0 xs) >=> $(define t) |]
           where
-            e0 = [| (fmap.fmap) $(conE (tupleDataName $ length xs)) $(go $ head xs) |]
-            g acc x = [| ((<*>) . fmap (<*>)) $(acc) $(go x) |]
+            e0 = [| (return . return) $(conE (tupleDataName $ length xs)) |]
+            g acc x = [| (ap . fmap ap) $(acc) $(go x) |]
 {-# INLINE mkWorkflow #-}
 
 mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
 mkProc pid f = \input -> do
-    st <- get
-    case M.findWithDefault Scheduled pid (st^.procStatus) of
-        Fail ex -> lift $ throwE ex
-        Success -> do
-            r <- liftIO $ readData pid $ st^.db
-            return r
+    wfState <- get
+    let pSt = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
+#ifdef DEBUG
+    isEmpty <- liftIO $ isEmptyMVar pSt
+    when isEmpty $ debug $ printf "%s: waiting for other nodes to finish." pid
+#endif
+    pStValue <- liftIO $ takeMVar pSt
+    case pStValue of
+        (Fail ex) -> liftIO (putMVar pSt pStValue) >> lift (throwE (pid, ex))
+        Success -> liftIO $ do
+            putMVar pSt pStValue
+#ifdef DEBUG
+            debug $ printf "Recovering saved node: %s" pid
+#endif
+            readData pid $ wfState^.db
         Scheduled -> do
 #ifdef DEBUG
-            traceM $ "Running node: " ++ T.unpack pid
+            debug $ printf "Running node: %s" pid
 #endif
-
             result <- liftIO $ try $ f input
             case result of
-                Left ex -> do
-                    (procStatus . at pid) .= Just (Fail ex)
-                    lift $ throwE ex
-                Right r -> do
-                    liftIO $ saveData pid r $ st^.db
-                    (procStatus . at pid) .= Just Success
+                Left ex -> liftIO (putMVar pSt $ Fail ex) >> lift (throwE (pid, ex))
+                Right r -> liftIO $ do
+                    saveData pid r $ wfState^.db
+                    putMVar pSt Success
                     return r
 {-# INLINE mkProc #-}

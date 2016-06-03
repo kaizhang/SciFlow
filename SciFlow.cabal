@@ -1,5 +1,5 @@
 name:                SciFlow
-version:             0.4.1
+version:             0.5.0
 synopsis:            Scientific workflow management system
 description:
   SciFlow is to help programmers design complex workflows
@@ -30,30 +30,30 @@ library
     Scientific.Workflow
     Scientific.Workflow.Builder
     Scientific.Workflow.DB
+    Scientific.Workflow.Main
     Scientific.Workflow.Types
+    Scientific.Workflow.Utils
     Scientific.Workflow.Visualize
 
   if flag(debug)
     CPP-Options: -DDEBUG
-  else
-    CPP-Options: -DNDEBUG
 
   build-depends:
       base >=4.0 && <5.0
+    , async
     , bytestring
-    , data-default-class
+    , containers
     , fgl
     , graphviz
     , lens >=4.0
     , mtl
     , optparse-applicative
-    , shelly
-    , split
+    , rainbow
+    , sqlite-simple
     , th-lift
     , text
     , template-haskell
     , transformers
-    , containers
     , yaml
 
   hs-source-dirs:      src

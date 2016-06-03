@@ -1,12 +1,13 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Scientific.Workflow.Types
     ( WorkflowDB(..)
     , Workflow(..)
+    , Workflows
     , PID
     , ProcState(..)
     , WorkflowState(..)
@@ -14,25 +15,28 @@ module Scientific.Workflow.Types
     , procStatus
     , Processor
     , RunOpt(..)
+    , RunOptSetter
     , defaultRunOpt
     , dbPath
     , Serializable(..)
-    , Attribute
+    , Attribute(..)
+    , AttributeSetter
     , defaultAttribute
     , label
     , note
-    , def
     ) where
 
-import Control.Lens (makeLenses)
+import           Control.Exception          (SomeException)
+import           Control.Lens               (makeLenses)
 import           Control.Monad.State
-import Control.Monad.Trans.Except (ExceptT)
-import Control.Exception (SomeException)
-import qualified Data.ByteString     as B
-import qualified Data.Map            as M
-import qualified Data.Text           as T
-import Data.Maybe (fromJust)
-import Data.Yaml (FromJSON, ToJSON, encode, decode)
+import           Control.Monad.Trans.Except (ExceptT)
+import qualified Data.ByteString            as B
+import           Data.Maybe                 (fromJust)
+import qualified Data.Text                  as T
+import           Data.Yaml                  (FromJSON, ToJSON, decode, encode)
+import           Database.SQLite.Simple     (Connection)
+import Control.Concurrent.MVar
+import qualified Data.Map as M
 
 class Serializable a where
     serialize :: a -> B.ByteString
@@ -43,42 +47,56 @@ instance (FromJSON a, ToJSON a) => Serializable a where
     deserialize = fromJust . decode
 
 -- | An abstract type representing the database used to store states of workflow
-data WorkflowDB  = WorkflowDB FilePath
+data WorkflowDB  = WorkflowDB Connection
 
 -- | The id of a node
 type PID = T.Text
 
 -- | The state of a computation node
 data ProcState = Success
-               | Scheduled
                | Fail SomeException
+               | Scheduled
 
 data WorkflowState = WorkflowState
     { _db         :: WorkflowDB
-    , _procStatus :: M.Map PID ProcState
+    , _procStatus :: M.Map PID (MVar ProcState)
     }
 
 makeLenses ''WorkflowState
 
-type Processor a b = a -> StateT WorkflowState (ExceptT SomeException IO) b
+type Processor a b = a -> StateT WorkflowState (ExceptT (PID, SomeException) IO) b
 
+-- | An Workflow is a DAG without loop and branches
 data Workflow where
     Workflow :: (Processor () o) -> Workflow
 
+-- | A list of workflows and ids of all nodes
+type Workflows = ([PID], [Workflow])
+
+
 data RunOpt = RunOpt
     { _dbPath :: FilePath
+    , parallel :: Bool
     }
 
 makeLenses ''RunOpt
 
 defaultRunOpt :: RunOpt
 defaultRunOpt = RunOpt
-    { _dbPath = "wfDB" }
+    { _dbPath = "sciflow.db"
+    , parallel = False
+    }
 
+type RunOptSetter = State RunOpt ()
+
+
+-- | Node attribute
 data Attribute = Attribute
     { _label :: T.Text  -- ^ short description
-    , _note :: T.Text   -- ^ long description
+    , _note  :: T.Text   -- ^ long description
     }
+
+makeLenses ''Attribute
 
 defaultAttribute :: Attribute
 defaultAttribute = Attribute
@@ -86,7 +104,4 @@ defaultAttribute = Attribute
     , _note = ""
     }
 
-makeLenses ''Attribute
-
-def :: State a ()
-def = return ()
+type AttributeSetter = State Attribute ()
