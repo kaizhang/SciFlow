@@ -7,10 +7,10 @@ module Scientific.Workflow
     ) where
 
 import           Control.Concurrent.MVar
+import           Control.Concurrent (forkIO)
 import           Control.Exception           (bracket, displayException)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
-import           Data.IORef                  (newIORef)
 import qualified Data.Map                    as M
 import qualified Data.Set                    as S
 
@@ -28,8 +28,9 @@ runWorkflow (pids, wfs) optSetter = bracket (openDB $ _dbPath opts) closeDB $ \d
                 then newMVar Success
                 else newMVar Scheduled
         return (pid, v)
-    counter <- newIORef 0
-    let initState = WorkflowState db pidStateMap counter
+    para <- newEmptyMVar
+    forkIO $ replicateM_ 2 $ putMVar para ()
+    let initState = WorkflowState db pidStateMap para
 #ifdef DEBUG
     debug $ printf "Executing %d workflow(s)" (length wfs)
 #endif

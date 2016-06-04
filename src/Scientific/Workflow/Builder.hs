@@ -22,6 +22,7 @@ import Control.Exception (try, displayException)
 import Control.Monad.Trans.Except (throwE)
 import           Control.Monad.State
 import Control.Concurrent.MVar
+import Control.Concurrent (forkIO)
 import Data.IORef
 import qualified Data.Text           as T
 import Data.Graph.Inductive.Graph
@@ -234,9 +235,14 @@ mkProc pid f = \input -> do
 
     pStValue <- liftIO $ takeMVar pSt
     case pStValue of
-        (Fail ex) -> liftIO (putMVar pSt pStValue) >> lift (throwE (pid, ex))
+        (Fail ex) -> do
+            liftIO $ do
+                putMVar pSt pStValue
+                forkIO $ putMVar (wfState^.procParaControl) ()
+            lift (throwE (pid, ex))
         Success -> liftIO $ do
             putMVar pSt pStValue
+            forkIO $ putMVar (wfState^.procParaControl) ()
 
 #ifdef DEBUG
             debug $ printf "Recovering saved node: %s" pid
@@ -244,7 +250,6 @@ mkProc pid f = \input -> do
 
             readData pid $ wfState^.db
         Scheduled -> do
-            liftIO $ atomicModifyIORef' (wfState^.procCounter) $ \x -> (x+1,())
 
 #ifdef DEBUG
             debug $ printf "Running node: %s" pid
@@ -254,13 +259,13 @@ mkProc pid f = \input -> do
             case result of
                 Left ex -> do
                     liftIO $ do
-                        atomicModifyIORef' (wfState^.procCounter) $ \x -> (x-1,())
                         putMVar pSt $ Fail ex
+                        forkIO $ putMVar (wfState^.procParaControl) ()
                     lift (throwE (pid, ex))
                 Right r -> liftIO $ do
-                    atomicModifyIORef' (wfState^.procCounter) $ \x -> (x-1,())
                     saveData pid r $ wfState^.db
                     putMVar pSt Success
+                    forkIO $ putMVar (wfState^.procParaControl) ()
                     return r
 {-# INLINE mkProc #-}
 
@@ -277,8 +282,5 @@ instance Applicative Parallel where
     pure = Parallel . pure
     Parallel fs <*> Parallel as = Parallel $ do
         st <- get
-        numProc <- liftIO $ readIORef $ st^.procCounter
-        liftIO $ atomicModifyIORef' (st^.procCounter) $ \x -> (x+1,())
-        if numProc < 2
-            then (\(f, a) -> f a) <$> concurrently fs as
-            else (\(f, a) -> f a) <$> liftM2 (,) fs as
+        liftIO $ takeMVar $ st^.procParaControl
+        (\(f, a) -> f a) <$> concurrently fs as

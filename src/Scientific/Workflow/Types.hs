@@ -14,7 +14,7 @@ module Scientific.Workflow.Types
     , WorkflowState(..)
     , db
     , procStatus
-    , procCounter
+    , procParaControl
     , Processor
     , RunOpt(..)
     , RunOptSetter
@@ -34,7 +34,6 @@ import           Control.Lens               (makeLenses)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except (ExceptT)
 import qualified Data.ByteString            as B
-import           Data.IORef                 (IORef)
 import qualified Data.Map                   as M
 import           Data.Maybe                 (fromJust)
 import qualified Data.Text                  as T
@@ -63,7 +62,7 @@ data NodeResult = Success
 data WorkflowState = WorkflowState
     { _db          :: WorkflowDB
     , _procStatus  :: M.Map PID (MVar NodeResult)
-    , _procCounter :: IORef Int
+    , _procParaControl :: MVar ()   -- ^ concurrency controller
     }
 
 makeLenses ''WorkflowState
