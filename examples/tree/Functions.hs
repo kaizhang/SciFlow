@@ -16,7 +16,7 @@ f = return . (+1)
 -- builder monad
 builder :: Builder ()
 builder = do
-    node "step0" [| return . const 0 |] $ return ()
+    node "step0" [| return . const 0 :: () -> IO Int |] $ return ()
     node "step1" 'f $ return ()
     node "step2" 'f $ return ()
     node "step3" 'f $ return ()

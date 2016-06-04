@@ -9,7 +9,8 @@ module Scientific.Workflow.Types
     , Workflow(..)
     , Workflows
     , PID
-    , ProcState(..)
+    , NodeResult(..)
+    , ProcState
     , WorkflowState(..)
     , db
     , procStatus
@@ -52,19 +53,21 @@ data WorkflowDB  = WorkflowDB Connection
 -- | The id of a node
 type PID = T.Text
 
--- | The state of a computation node
-data ProcState = Success
-               | Fail SomeException
-               | Scheduled
+-- | The result of a computation node
+data NodeResult = Success
+                | Fail SomeException
+                | Scheduled
 
 data WorkflowState = WorkflowState
     { _db         :: WorkflowDB
-    , _procStatus :: M.Map PID (MVar ProcState)
+    , _procStatus :: M.Map PID (MVar NodeResult)
+    --, _procCounter :: IORef Int
     }
 
 makeLenses ''WorkflowState
 
-type Processor a b = a -> StateT WorkflowState (ExceptT (PID, SomeException) IO) b
+type ProcState b = StateT WorkflowState (ExceptT (PID, SomeException) IO) b
+type Processor a b = a -> ProcState b
 
 -- | An Workflow is a DAG without loop and branches
 data Workflow where

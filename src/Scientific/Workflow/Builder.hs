@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE GADTs #-}
 
 module Scientific.Workflow.Builder
     ( node
@@ -29,6 +30,7 @@ import Data.Graph.Inductive.Graph
     , outdeg
     , lpre
     , labnfilter
+    , nfilter
     , gmap
     , suc
     , subgraph )
@@ -93,11 +95,14 @@ path ns = foldM_ f (head ns) $ tail ns
     f a t = link [a] t >> return t
 {-# INLINE path #-}
 
--- | Build the workflow.
-buildWorkflow :: String
+-- | Build the workflow. This function will first create functions defined in
+-- the builder. These pieces will then be assembled to form a function that will
+-- execute each individual function in a correct order, named $prefix$_sciflow.
+-- Lastly, a function table will be created with the name $prefix$_function_table.
+buildWorkflow :: String     -- ^ prefix
               -> Builder ()
               -> Q [Dec]
-buildWorkflow wfName b = mkWorkflow wfName $ mkDAG b
+buildWorkflow prefix b = mkWorkflow prefix $ mkDAG b
 
 -- | Build only a part of the workflow that has not been executed. This is used
 -- during development for fast compliation.
@@ -167,36 +172,50 @@ trimDAG st dag = gmap revise gr
                 _ -> return False
 {-# INLINE trimDAG #-}
 
--- | Generate codes from a DAG
-mkWorkflow :: String -> DAG -> Q [Dec]
-mkWorkflow wfName dag = do
+data Closure where
+    Closure :: (Serializable a, Serializable b, Monad m) => (a -> m b) -> Closure
+
+-- Generate codes from a DAG. This function will create functions defined in
+-- the builder. These pieces will be assembled to form a function that will
+-- execute each individual function in a correct order.
+-- Lastly, a function table will be created with the name $prefix$_function_table.
+mkWorkflow :: String   -- prefix
+           -> DAG -> Q [Dec]
+mkWorkflow workflowName dag = do
     -- write node funcitons
-    decNode <- concat <$> mapM (f . snd) ns
+    functions <- concat <$> mapM (\(p, (fn,_)) -> [d|
+        $(varP $ mkName $ T.unpack p) = mkProc p $(fn) |]) computeNodes
 
     -- define workflows
-    decWf <- [d| $(varP $ mkName wfName) =
-                    ( pids
-                    , $(fmap ListE $ mapM linking leafNodes) )
-             |]
-    return $ decNode ++ decWf
+    workflows <-
+        [d| $(varP $ mkName workflowName) = ( pids, $(ListE <$> mapM ( \x ->
+                [| Workflow $(backTrack x) |] ) sinks) ) |]
+
+    -- function table
+    funcTable <-
+        [d| $(varP $ mkName functionTableName) = M.fromList $(ListE <$> mapM
+                ( \x -> [| (T.unpack x, Closure $(varE $ mkName $ T.unpack x))
+                |] ) pids) |]
+
+    return $ functions ++ workflows ++ funcTable
   where
-    pids = fst $ unzip $ snd $ unzip ns
-    f (p, (fn, _)) = [d| $(varP $ mkName $ T.unpack p) = mkProc p $(fn) |]
-    ns = labNodes dag
-    leafNodes = filter ((==0) . outdeg dag . fst) ns
-    linking nd = [| Workflow $(go nd) |]
+    functionTableName = workflowName ++ "_function_table"
+    computeNodes = snd $ unzip $ labNodes dag
+    pids = fst $ unzip computeNodes
+    sinks = labNodes $ nfilter ((==0) . outdeg dag) dag
+
+    backTrack sink = connect sources sink
       where
-        go n = connect inNodes n
-          where
-            inNodes = map (\(x,_) -> (x, fromJust $ lab dag x)) $
-                      sortBy (comparing snd) $ lpre dag $ fst n
-        define n = varE $ mkName (T.unpack $ (snd n) ^. _1)
-        connect [] t = define t
-        connect [s1] t = [| $(go s1) >=> $(define t) |]
-        connect xs t = [| $(foldl g e0 xs) >=> $(define t) |]
-          where
-            e0 = [| (return . return) $(conE (tupleDataName $ length xs)) |]
-            g acc x = [| (ap . fmap ap) $(acc) $(go x) |]
+        sources = map (\(x,_) -> (x, fromJust $ lab dag x)) $
+            sortBy (comparing snd) $ lpre dag $ fst sink
+
+    connect [] sink = mkNodeVar sink
+    connect [source] sink = [| $(backTrack source) >=> $(mkNodeVar sink) |]
+    connect sources sink = [| $(foldl g e0 sources) >=> $(mkNodeVar sink) |]
+      where
+        e0 = [| (return . return) $(conE (tupleDataName $ length sources)) |]
+        g acc x = [| (ap . fmap ap) $(acc) $(backTrack x) |]
+    mkNodeVar = varE . mkName . T.unpack . fst . snd
 {-# INLINE mkWorkflow #-}
 
 mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
@@ -228,3 +247,18 @@ mkProc pid f = \input -> do
                     putMVar pSt Success
                     return r
 {-# INLINE mkProc #-}
+
+
+
+--------------------------------------------------------------------------------
+
+{-
+newtype Parallel a = Parallel { runParallel :: ProcState a}
+
+instance Functor Parallel where
+  fmap f (Parallel a) = Parallel $ f <$> a
+
+instance Applicative Parallel where
+  pure = Parallel . return
+  Parallel fs <*> Parallel as = Concurrently $ (\(f, a) -> f a) <$> concurrently fs as
+  -}
