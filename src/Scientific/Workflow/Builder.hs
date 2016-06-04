@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE GADTs #-}
 
 module Scientific.Workflow.Builder
     ( node
@@ -176,8 +175,6 @@ trimDAG st dag = gmap revise gr
                 _ -> return False
 {-# INLINE trimDAG #-}
 
-data Closure where
-    Closure :: (Serializable a, Serializable b, Monad m) => (a -> m b) -> Closure
 
 -- Generate codes from a DAG. This function will create functions defined in
 -- the builder. These pieces will be assembled to form a function that will
@@ -187,43 +184,44 @@ mkWorkflow :: String   -- prefix
            -> DAG -> Q [Dec]
 mkWorkflow workflowName dag = do
     -- write node funcitons
-    functions <- concat <$> mapM (\(p, (fn,_)) -> [d|
-        $(varP $ mkName $ T.unpack p) = mkProc p $(fn) |]) computeNodes
-
-    -- define workflows
-    workflows <-
-        [d| $(varP $ mkName workflowName) = ( pids, $(ListE <$> mapM ( \x ->
-                [| Workflow $(backTrack x) |] ) sinks) ) |]
+    functions <- fmap concat $ forM computeNodes $ \(p, (fn,_)) -> [d|
+        $(varP $ mkName $ T.unpack p) = mkProc p $(fn) |]
 
     -- function table
     funcTable <-
-        [d| $(varP $ mkName functionTableName) = M.fromList $(ListE <$> mapM
-                ( \x -> [| (T.unpack x, Closure $(varE $ mkName $ T.unpack x))
-                |] ) pids) |]
+        [d| $(varP $ mkName functionTableName) = M.fromList
+                $( fmap ListE $ forM computeNodes $ \(p, (fn, _)) ->
+                [| (T.unpack p, Closure $(fn)) |] ) |]
 
-    return $ functions ++ workflows ++ funcTable
+    -- define workflows
+    workflows <-
+        [d| $(varP $ mkName workflowName) = Workflow pids
+                $(varE $ mkName functionTableName)
+                $(connect sinks [| const $ return () |]) |]
+
+    return $ functions ++ funcTable ++ workflows
   where
     functionTableName = workflowName ++ "_function_table"
     computeNodes = snd $ unzip $ labNodes dag
     pids = fst $ unzip computeNodes
     sinks = labNodes $ nfilter ((==0) . outdeg dag) dag
 
-    backTrack sink = connect sources sink
+    backTrack sink = connect sources $ mkNodeVar sink
       where
         sources = map (\(x,_) -> (x, fromJust $ lab dag x)) $
             sortBy (comparing snd) $ lpre dag $ fst sink
 
-    connect [] sink = mkNodeVar sink
-    connect [source] sink = [| $(backTrack source) >=> $(mkNodeVar sink) |]
+    connect [] sink = sink
+    connect [source] sink = [| $(backTrack source) >=> $(sink) |]
     connect sources sink = [| fmap runParallel $(foldl g e0 $ sources)
-        >=> $(mkNodeVar sink) |]
+        >=> $(sink) |]
       where
         e0 = [| (pure. pure) $(conE (tupleDataName $ length sources)) |]
         g acc x = [| ((<*>) . fmap (<*>)) $(acc) $ fmap Parallel $(backTrack x) |]
     mkNodeVar = varE . mkName . T.unpack . fst . snd
 {-# INLINE mkWorkflow #-}
 
-mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
+mkProc :: DBData b => PID -> (a -> IO b) -> (Processor a b)
 mkProc pid f = \input -> do
     wfState <- get
     let pSt = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus

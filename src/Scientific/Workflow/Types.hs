@@ -1,13 +1,13 @@
 {-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE GADTs                #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE GADTs #-}
 
 module Scientific.Workflow.Types
     ( WorkflowDB(..)
     , Workflow(..)
-    , Workflows
+    , Closure(..)
     , PID
     , NodeResult(..)
     , ProcState
@@ -20,7 +20,7 @@ module Scientific.Workflow.Types
     , RunOptSetter
     , defaultRunOpt
     , dbPath
-    , Serializable(..)
+    , DBData(..)
     , Attribute(..)
     , AttributeSetter
     , defaultAttribute
@@ -28,6 +28,7 @@ module Scientific.Workflow.Types
     , note
     ) where
 
+import qualified Data.Serialize as S
 import           Control.Concurrent.MVar
 import           Control.Exception          (SomeException)
 import           Control.Lens               (makeLenses)
@@ -40,13 +41,20 @@ import qualified Data.Text                  as T
 import           Data.Yaml                  (FromJSON, ToJSON, decode, encode)
 import           Database.SQLite.Simple     (Connection)
 
-class Serializable a where
+class DBData a where
     serialize :: a -> B.ByteString
     deserialize :: B.ByteString -> a
+    showYaml :: a -> B.ByteString
+    readYaml :: B.ByteString -> a
 
-instance (FromJSON a, ToJSON a) => Serializable a where
-    serialize = encode
-    deserialize = fromJust . decode
+instance (FromJSON a, ToJSON a, S.Serialize a) => DBData a where
+    serialize = S.encode
+    deserialize = fromEither . S.decode
+      where
+        fromEither (Right x) = x
+        fromEither _ = error "decode failed"
+    showYaml = encode
+    readYaml = fromJust . decode
 
 -- | An abstract type representing the database used to store states of workflow
 data WorkflowDB  = WorkflowDB Connection
@@ -70,17 +78,16 @@ makeLenses ''WorkflowState
 type ProcState b = StateT WorkflowState (ExceptT (PID, SomeException) IO) b
 type Processor a b = a -> ProcState b
 
--- | An Workflow is a DAG without loop and branches
-data Workflow where
-    Workflow :: (Processor () o) -> Workflow
 
--- | A list of workflows and ids of all nodes
-type Workflows = ([PID], [Workflow])
+data Closure where
+    Closure :: (DBData a, DBData b) => (a -> IO b) -> Closure
 
+-- | A Workflow is a DAG
+data Workflow = Workflow [PID] (M.Map String Closure) (Processor () ())
 
 data RunOpt = RunOpt
     { _dbPath  :: FilePath
-    , parallel :: Bool
+    , nThread :: Int      -- ^ number of concurrent processes
     }
 
 makeLenses ''RunOpt
@@ -88,7 +95,7 @@ makeLenses ''RunOpt
 defaultRunOpt :: RunOpt
 defaultRunOpt = RunOpt
     { _dbPath = "sciflow.db"
-    , parallel = False
+    , nThread = 1
     }
 
 type RunOptSetter = State RunOpt ()

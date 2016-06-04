@@ -40,6 +40,7 @@ library
       base >=4.0 && <5.0
     , bytestring
     , containers
+    , cereal
     , fgl
     , graphviz
     , lens >=4.0

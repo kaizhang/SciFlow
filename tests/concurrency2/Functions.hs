@@ -24,5 +24,9 @@ builder = do
     node "step1" [| test "1" |] $ return ()
     node "step2" [| test "2" |] $ return ()
     node "step3" [| test "3" |] $ return ()
-    node "step4" [| undefined :: ((),(),(),()) -> IO () |] $ return ()
-    ["step0", "step1", "step2", "step3"] ~> "step4"
+    node "step4" [| test "4" |] $ return ()
+    node "step5" [| test "5" |] $ return ()
+    node "step6" [| test "6" |] $ return ()
+    node "step7" [| test "7" |] $ return ()
+    node "step8" [| test "8" |] $ return ()
+    node "step9" [| test "9" |] $ return ()

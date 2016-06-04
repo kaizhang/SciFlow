@@ -6,6 +6,7 @@ module Scientific.Workflow.DB
     , readDataByteString
     , saveDataByteString
     , saveData
+    , updateData
     , delRecord
     , isFinished
     , getKeys
@@ -28,7 +29,7 @@ createTable db tablename =
 hasTable :: Connection -> String -> IO Bool
 hasTable db tablename = do
     r <- query db
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?" [tablename]
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?" [tablename]
     return $ not $ null (r :: [Only T.Text])
 
 openDB :: FilePath -> IO WorkflowDB
@@ -46,24 +47,29 @@ closeDB :: WorkflowDB -> IO ()
 closeDB (WorkflowDB db) = close db
 {-# INLINE closeDB #-}
 
-readData :: Serializable r => PID -> WorkflowDB -> IO r
+readData :: DBData r => PID -> WorkflowDB -> IO r
 readData pid (WorkflowDB db) = do
     [Only result] <- query db (Query $ T.pack $
-        printf "SELECT data FROM %s WHERE pid = ?" dbTableName) [pid]
+        printf "SELECT data FROM %s WHERE pid=?" dbTableName) [pid]
     return $ deserialize result
 {-# INLINE readData #-}
 
 readDataByteString :: PID -> WorkflowDB -> IO B.ByteString
 readDataByteString pid (WorkflowDB db) = do
     [Only result] <- query db (Query $ T.pack $
-        printf "SELECT data FROM %s WHERE pid = ?" dbTableName) [pid]
+        printf "SELECT data FROM %s WHERE pid=?" dbTableName) [pid]
     return result
 {-# INLINE readDataByteString #-}
 
-saveData :: Serializable r => PID -> r -> WorkflowDB -> IO ()
+saveData :: DBData r => PID -> r -> WorkflowDB -> IO ()
 saveData pid result (WorkflowDB db) = execute db (Query $ T.pack $
     printf "INSERT INTO %s VALUES (?, ?)" dbTableName) (pid, serialize result)
 {-# INLINE saveData #-}
+
+updateData :: DBData r => PID -> r -> WorkflowDB -> IO ()
+updateData pid result (WorkflowDB db) = execute db (Query $ T.pack $
+    printf "UPDATE %s SET data=? WHERE pid=?" dbTableName) (serialize result, pid)
+{-# INLINE updateData #-}
 
 saveDataByteString :: PID -> B.ByteString -> WorkflowDB -> IO ()
 saveDataByteString pid result (WorkflowDB db) = execute db (Query $ T.pack $
