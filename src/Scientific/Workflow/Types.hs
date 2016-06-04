@@ -14,6 +14,7 @@ module Scientific.Workflow.Types
     , WorkflowState(..)
     , db
     , procStatus
+    , procCounter
     , Processor
     , RunOpt(..)
     , RunOptSetter
@@ -27,17 +28,18 @@ module Scientific.Workflow.Types
     , note
     ) where
 
+import           Control.Concurrent.MVar
 import           Control.Exception          (SomeException)
 import           Control.Lens               (makeLenses)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except (ExceptT)
 import qualified Data.ByteString            as B
+import           Data.IORef                 (IORef)
+import qualified Data.Map                   as M
 import           Data.Maybe                 (fromJust)
 import qualified Data.Text                  as T
 import           Data.Yaml                  (FromJSON, ToJSON, decode, encode)
 import           Database.SQLite.Simple     (Connection)
-import Control.Concurrent.MVar
-import qualified Data.Map as M
 
 class Serializable a where
     serialize :: a -> B.ByteString
@@ -59,9 +61,9 @@ data NodeResult = Success
                 | Scheduled
 
 data WorkflowState = WorkflowState
-    { _db         :: WorkflowDB
-    , _procStatus :: M.Map PID (MVar NodeResult)
-    --, _procCounter :: IORef Int
+    { _db          :: WorkflowDB
+    , _procStatus  :: M.Map PID (MVar NodeResult)
+    , _procCounter :: IORef Int
     }
 
 makeLenses ''WorkflowState
@@ -78,7 +80,7 @@ type Workflows = ([PID], [Workflow])
 
 
 data RunOpt = RunOpt
-    { _dbPath :: FilePath
+    { _dbPath  :: FilePath
     , parallel :: Bool
     }
 

@@ -6,19 +6,19 @@ module Scientific.Workflow
     , module Scientific.Workflow.Types
     ) where
 
-import Control.Concurrent.Async (mapConcurrently)
-import           Control.Exception           (displayException, bracket)
+import           Control.Concurrent.MVar
+import           Control.Exception           (bracket, displayException)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
-import qualified Data.Set as S
-import qualified Data.Map as M
-import Control.Concurrent.MVar
+import           Data.IORef                  (newIORef)
+import qualified Data.Map                    as M
+import qualified Data.Set                    as S
 
 import           Scientific.Workflow.Builder
 import           Scientific.Workflow.DB
 import           Scientific.Workflow.Types
 import           Scientific.Workflow.Utils
-import Text.Printf (printf)
+import           Text.Printf                 (printf)
 
 runWorkflow :: Workflows -> RunOptSetter -> IO ()
 runWorkflow (pids, wfs) optSetter = bracket (openDB $ _dbPath opts) closeDB $ \db -> do
@@ -28,15 +28,14 @@ runWorkflow (pids, wfs) optSetter = bracket (openDB $ _dbPath opts) closeDB $ \d
                 then newMVar Success
                 else newMVar Scheduled
         return (pid, v)
-    let initState = WorkflowState db pidStateMap
+    counter <- newIORef 0
+    let initState = WorkflowState db pidStateMap counter
 #ifdef DEBUG
     debug $ printf "Executing %d workflow(s)" (length wfs)
 #endif
-    mapFn (f initState) wfs >> return ()
+    mapM_ (f initState) wfs
   where
     opts = execState optSetter defaultRunOpt
-    mapFn | parallel opts = mapConcurrently
-          | otherwise = mapM
     f initState (Workflow wf) = do
         result <- runExceptT $ evalStateT (wf ()) initState
         case result of

@@ -22,6 +22,7 @@ import Control.Exception (try, displayException)
 import Control.Monad.Trans.Except (throwE)
 import           Control.Monad.State
 import Control.Concurrent.MVar
+import Data.IORef
 import qualified Data.Text           as T
 import Data.Graph.Inductive.Graph
     ( mkGraph
@@ -48,6 +49,8 @@ import Scientific.Workflow.Types
 import Scientific.Workflow.DB
 import Scientific.Workflow.Utils (debug)
 import Text.Printf (printf)
+
+import Control.Concurrent.Async.Lifted (concurrently)
 
 
 instance T.Lift T.Text where
@@ -121,7 +124,7 @@ getWorkflowState dir = do
     db <- openDB dir
     ks <- getKeys db
     vs <- replicateM (length ks) $ newMVar Success
-    return $ WorkflowState db $ M.fromList $ zip ks vs
+    return $ WorkflowState db (M.fromList $ zip ks vs) undefined
 {-# INLINE getWorkflowState #-}
 
 -- | Objects that can be converted to ExpQ
@@ -211,10 +214,11 @@ mkWorkflow workflowName dag = do
 
     connect [] sink = mkNodeVar sink
     connect [source] sink = [| $(backTrack source) >=> $(mkNodeVar sink) |]
-    connect sources sink = [| $(foldl g e0 sources) >=> $(mkNodeVar sink) |]
+    connect sources sink = [| fmap runParallel $(foldl g e0 $ sources)
+        >=> $(mkNodeVar sink) |]
       where
-        e0 = [| (return . return) $(conE (tupleDataName $ length sources)) |]
-        g acc x = [| (ap . fmap ap) $(acc) $(backTrack x) |]
+        e0 = [| (pure. pure) $(conE (tupleDataName $ length sources)) |]
+        g acc x = [| ((<*>) . fmap (<*>)) $(acc) $ fmap Parallel $(backTrack x) |]
     mkNodeVar = varE . mkName . T.unpack . fst . snd
 {-# INLINE mkWorkflow #-}
 
@@ -222,27 +226,39 @@ mkProc :: Serializable b => PID -> (a -> IO b) -> (Processor a b)
 mkProc pid f = \input -> do
     wfState <- get
     let pSt = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
+
 #ifdef DEBUG
     isEmpty <- liftIO $ isEmptyMVar pSt
     when isEmpty $ debug $ printf "%s: waiting for other nodes to finish." pid
 #endif
+
     pStValue <- liftIO $ takeMVar pSt
     case pStValue of
         (Fail ex) -> liftIO (putMVar pSt pStValue) >> lift (throwE (pid, ex))
         Success -> liftIO $ do
             putMVar pSt pStValue
+
 #ifdef DEBUG
             debug $ printf "Recovering saved node: %s" pid
 #endif
+
             readData pid $ wfState^.db
         Scheduled -> do
+            liftIO $ atomicModifyIORef' (wfState^.procCounter) $ \x -> (x+1,())
+
 #ifdef DEBUG
             debug $ printf "Running node: %s" pid
 #endif
+
             result <- liftIO $ try $ f input
             case result of
-                Left ex -> liftIO (putMVar pSt $ Fail ex) >> lift (throwE (pid, ex))
+                Left ex -> do
+                    liftIO $ do
+                        atomicModifyIORef' (wfState^.procCounter) $ \x -> (x-1,())
+                        putMVar pSt $ Fail ex
+                    lift (throwE (pid, ex))
                 Right r -> liftIO $ do
+                    atomicModifyIORef' (wfState^.procCounter) $ \x -> (x-1,())
                     saveData pid r $ wfState^.db
                     putMVar pSt Success
                     return r
@@ -252,13 +268,17 @@ mkProc pid f = \input -> do
 
 --------------------------------------------------------------------------------
 
-{-
 newtype Parallel a = Parallel { runParallel :: ProcState a}
 
 instance Functor Parallel where
-  fmap f (Parallel a) = Parallel $ f <$> a
+    fmap f (Parallel a) = Parallel $ f <$> a
 
 instance Applicative Parallel where
-  pure = Parallel . return
-  Parallel fs <*> Parallel as = Concurrently $ (\(f, a) -> f a) <$> concurrently fs as
-  -}
+    pure = Parallel . pure
+    Parallel fs <*> Parallel as = Parallel $ do
+        st <- get
+        numProc <- liftIO $ readIORef $ st^.procCounter
+        liftIO $ atomicModifyIORef' (st^.procCounter) $ \x -> (x+1,())
+        if numProc < 2
+            then (\(f, a) -> f a) <$> concurrently fs as
+            else (\(f, a) -> f a) <$> liftM2 (,) fs as

@@ -38,12 +38,12 @@ library
 
   build-depends:
       base >=4.0 && <5.0
-    , async
     , bytestring
     , containers
     , fgl
     , graphviz
     , lens >=4.0
+    , lifted-async
     , mtl
     , optparse-applicative
     , rainbow
