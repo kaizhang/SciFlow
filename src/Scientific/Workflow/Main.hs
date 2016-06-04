@@ -15,6 +15,7 @@ import qualified Data.Text.Lazy.IO                 as T
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift          as T
 import           System.Environment
+import Shelly
 
 import           Scientific.Workflow
 import           Scientific.Workflow.DB
@@ -59,5 +60,10 @@ mainFunc dag wf@(Workflow _ ft _) = do
                     proxy <- fn undefined
                     updateData (T.pack $ args!!0) (head [readYaml c, proxy]) db
                 Nothing -> return ()
+        {-
+        "recover" -> do
+            db <- openDB $ _dbPath opt
+            lsT $ fromText $ T.pack $ head args
+            -}
   where
     opt = execState (return ()) defaultRunOpt

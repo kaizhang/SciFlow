@@ -1,9 +1,26 @@
 Scientific workflow management system
 =====================================
 
-A scientific workflow is a series of computational steps which usually can be presented as a Directed Acyclic Graph (DAG).
+Introduction
+------------
 
-SciFlow is to help programmers design complex workflows with ease. Here is a trivial example. (Since we use template haskell, we need to divide this small program into two parts.)
+SciFlow is a workflow management system for working with big data pipelines locally
+or in a grid computing system.
+
+Most scientific computing pipelines are composed of many computational steps, and each of them involves heavy computation and IO operations. A workflow management system can
+help user design complex computing patterns and track the states of computation.
+The ability to recover from failures is crucial in large pipelines as they usually
+take days or weeks to finish.
+
+Features:
+
+1. Easy to use: A simple and flexible way to specify computational pipelines in Haskell.
+
+2. Automatic Checkpointing: The result of each intermediate step is stored, allowing easy restart upon failures.
+
+3. Parallelism and grid computing support: Independent computational steps will run concurrently. And users can decide whether to run steps locally or on remote compute nodes in a grid system (have not released yet).
+
+Here is a simple example. (Since we use template haskell, we need to divide this small program into two files.)
 
 ```haskell
 ---------------------------------------------------
