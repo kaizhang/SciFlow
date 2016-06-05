@@ -19,8 +19,8 @@ import           Scientific.Workflow.Types
 import           Scientific.Workflow.Utils
 import           Text.Printf                 (printf)
 
-runWorkflow :: Workflow -> RunOptSetter -> IO ()
-runWorkflow (Workflow pids _ wf) optSetter = bracket (openDB $ _dbPath opts) closeDB $ \db -> do
+runWorkflow :: Workflow -> RunOpt -> IO ()
+runWorkflow (Workflow pids _ wf) opts = bracket (openDB $ database opts) closeDB $ \db -> do
     ks <- S.fromList <$> getKeys db
     pidStateMap <- fmap M.fromList $ forM pids $ \pid -> do
         v <- if pid `S.member` ks
@@ -35,5 +35,3 @@ runWorkflow (Workflow pids _ wf) optSetter = bracket (openDB $ _dbPath opts) clo
         Right _ -> return ()
         Left (pid, ex) -> error' $ printf "\"%s\" failed. The error was: %s"
             pid (displayException ex)
-  where
-    opts = execState optSetter defaultRunOpt

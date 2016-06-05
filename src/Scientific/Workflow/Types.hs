@@ -17,9 +17,6 @@ module Scientific.Workflow.Types
     , procParaControl
     , Processor
     , RunOpt(..)
-    , RunOptSetter
-    , defaultRunOpt
-    , dbPath
     , DBData(..)
     , Attribute(..)
     , AttributeSetter
@@ -70,7 +67,7 @@ data NodeResult = Success
 data WorkflowState = WorkflowState
     { _db          :: WorkflowDB
     , _procStatus  :: M.Map PID (MVar NodeResult)
-    , _procParaControl :: MVar ()   -- ^ concurrency controller
+    , _procParaControl :: MVar () -- ^ concurrency controller
     }
 
 makeLenses ''WorkflowState
@@ -86,20 +83,9 @@ data Closure where
 data Workflow = Workflow [PID] (M.Map String Closure) (Processor () ())
 
 data RunOpt = RunOpt
-    { _dbPath  :: FilePath
+    { database :: FilePath
     , nThread :: Int      -- ^ number of concurrent processes
     }
-
-makeLenses ''RunOpt
-
-defaultRunOpt :: RunOpt
-defaultRunOpt = RunOpt
-    { _dbPath = "sciflow.db"
-    , nThread = 1
-    }
-
-type RunOptSetter = State RunOpt ()
-
 
 -- | Node attribute
 data Attribute = Attribute

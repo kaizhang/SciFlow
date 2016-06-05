@@ -109,15 +109,13 @@ buildWorkflow prefix b = mkWorkflow prefix $ mkDAG b
 
 -- | Build only a part of the workflow that has not been executed. This is used
 -- during development for fast compliation.
-buildWorkflowPart :: State RunOpt ()
+buildWorkflowPart :: RunOpt
                   -> String
                   -> Builder ()
                   -> Q [Dec]
-buildWorkflowPart setOpt wfName b = do
-    st <- runIO $ getWorkflowState $ opt^.dbPath
+buildWorkflowPart opts wfName b = do
+    st <- runIO $ getWorkflowState $ database opts
     mkWorkflow wfName $ trimDAG st $ mkDAG b
-  where
-    opt = execState setOpt defaultRunOpt
 
 getWorkflowState :: FilePath -> IO WorkflowState
 getWorkflowState dir = do
@@ -226,21 +224,14 @@ mkProc pid f = \input -> do
     wfState <- get
     let pSt = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
 
-#ifdef DEBUG
-    isEmpty <- liftIO $ isEmptyMVar pSt
-    when isEmpty $ debug $ printf "%s: waiting for other nodes to finish." pid
-#endif
-
     pStValue <- liftIO $ takeMVar pSt
     case pStValue of
         (Fail ex) -> do
             liftIO $ do
                 putMVar pSt pStValue
-                forkIO $ putMVar (wfState^.procParaControl) ()
             lift (throwE (pid, ex))
         Success -> liftIO $ do
             putMVar pSt pStValue
-            forkIO $ putMVar (wfState^.procParaControl) ()
 
 #ifdef DEBUG
             debug $ printf "Recovering saved node: %s" pid
@@ -248,6 +239,7 @@ mkProc pid f = \input -> do
 
             readData pid $ wfState^.db
         Scheduled -> do
+            liftIO $ takeMVar $ wfState^.procParaControl
 
 #ifdef DEBUG
             debug $ printf "Running node: %s" pid
@@ -278,7 +270,5 @@ instance Functor Parallel where
 
 instance Applicative Parallel where
     pure = Parallel . pure
-    Parallel fs <*> Parallel as = Parallel $ do
-        st <- get
-        liftIO $ takeMVar $ st^.procParaControl
+    Parallel fs <*> Parallel as = Parallel $
         (\(f, a) -> f a) <$> concurrently fs as

@@ -33,6 +33,9 @@ library
     Scientific.Workflow.Utils
     Scientific.Workflow.Visualize
 
+  other-modules:
+    Paths_SciFlow
+
   if flag(debug)
     CPP-Options: -DDEBUG
 
@@ -48,6 +51,7 @@ library
     , mtl
     , optparse-applicative
     , rainbow
+    , shelly
     , sqlite-simple
     , th-lift
     , text
