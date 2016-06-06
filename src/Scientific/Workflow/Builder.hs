@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE CPP #-}
 
 module Scientific.Workflow.Builder
@@ -47,7 +48,7 @@ import qualified Language.Haskell.TH.Lift as T
 
 import Scientific.Workflow.Types
 import Scientific.Workflow.DB
-import Scientific.Workflow.Utils (debug)
+import Scientific.Workflow.Utils (debug, runRemote)
 import Text.Printf (printf)
 
 import Control.Concurrent.Async.Lifted (concurrently)
@@ -122,7 +123,7 @@ getWorkflowState dir = do
     db <- openDB dir
     ks <- getKeys db
     vs <- replicateM (length ks) $ newMVar Success
-    return $ WorkflowState db (M.fromList $ zip ks vs) undefined
+    return $ WorkflowState db (M.fromList $ zip ks vs) undefined undefined
 {-# INLINE getWorkflowState #-}
 
 -- | Objects that can be converted to ExpQ
@@ -219,17 +220,14 @@ mkWorkflow workflowName dag = do
     mkNodeVar = varE . mkName . T.unpack . fst . snd
 {-# INLINE mkWorkflow #-}
 
-mkProc :: DBData b => PID -> (a -> IO b) -> (Processor a b)
+mkProc :: (DBData a, DBData b) => PID -> (a -> IO b) -> (Processor a b)
 mkProc pid f = \input -> do
     wfState <- get
     let pSt = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
 
     pStValue <- liftIO $ takeMVar pSt
     case pStValue of
-        (Fail ex) -> do
-            liftIO $ do
-                putMVar pSt pStValue
-            lift (throwE (pid, ex))
+        (Fail ex) -> liftIO (putMVar pSt pStValue) >> lift (throwE (pid, ex))
         Success -> liftIO $ do
             putMVar pSt pStValue
 
@@ -245,7 +243,9 @@ mkProc pid f = \input -> do
             debug $ printf "Running node: %s" pid
 #endif
 
-            result <- liftIO $ try $ f input
+            result <- liftIO $ try $ case wfState^.remote of
+                True -> runRemote pid input
+                _ -> f input
             case result of
                 Left ex -> do
                     liftIO $ do

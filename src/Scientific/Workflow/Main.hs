@@ -23,6 +23,7 @@ import           Options.Applicative               hiding (runParser)
 import           Shelly                            (fromText, lsT, mkdir_p,
                                                     rm_f, shelly)
 import           Text.Printf                       (printf)
+import DRMAA (withSGESession)
 
 import           Scientific.Workflow
 import           Scientific.Workflow.DB
@@ -37,13 +38,14 @@ instance T.Lift (Gr (PID, Attribute) Int) where
   lift gr = [| uncurry mkGraph $(T.lift (labNodes gr, labEdges gr)) |]
 
 
-data CMD = Run GlobalOpts Int
+data CMD = Run GlobalOpts Int Bool
          | View
          | Cat GlobalOpts String
          | Write GlobalOpts String FilePath
          | Delete GlobalOpts String
          | Recover GlobalOpts FilePath
          | DumpDB GlobalOpts FilePath
+         | Call String String String
 
 data GlobalOpts = GlobalOpts
     { dbPath :: FilePath }
@@ -63,7 +65,12 @@ runParser = Run
        <> value 1
        <> metavar "CORES"
        <> help "The number of concurrent processes." )
-runExe (Run opts n) wf = runWorkflow wf $ RunOpt (dbPath opts) n
+    <*> switch
+        ( long "remote"
+       <> help "Submit jobs to remote machines.")
+runExe (Run opts n r) wf
+    | r = withSGESession $ runWorkflow wf $ RunOpt (dbPath opts) n True
+    | otherwise = runWorkflow wf $ RunOpt (dbPath opts) n False
 runExe _ _ = undefined
 {-# INLINE runExe #-}
 
@@ -157,17 +164,32 @@ dumpDBExe (DumpDB opts dir) (Workflow _ ft _) = do
 dumpDBExe _ _ = undefined
 {-# INLINE dumpDBExe #-}
 
+callParser :: Parser CMD
+callParser = Call
+         <$> strArgument mempty
+         <*> strArgument mempty
+         <*> strArgument mempty
+callExe (Call pid inputFl outputFl) (Workflow _ ft _) = case M.lookup pid ft of
+    Just (Closure fn) -> do
+        input <- deserialize <$> B.readFile inputFl
+        output <- serialize <$> fn input
+        B.writeFile outputFl output
+    Nothing -> undefined
+callExe _ _ = undefined
+{-# INLINE callExe #-}
+
 
 mainFunc :: Gr (PID, Attribute) Int -> Workflow -> IO ()
 mainFunc dag wf = execParser opts >>= execute
   where
-    execute cmd@(Run _ _) = runExe cmd wf
+    execute cmd@(Run _ _ _) = runExe cmd wf
     execute View = viewExe dag
     execute cmd@(Cat _ _) = catExe cmd wf
     execute cmd@(Write _ _ _) = writeExe cmd wf
     execute cmd@(Delete _ _) = rmExe cmd
     execute cmd@(Recover _ _) = recoverExe cmd wf
     execute cmd@(DumpDB _ _) = dumpDBExe cmd wf
+    execute cmd@(Call _ _ _) = callExe cmd wf
 
     opts = info (helper <*> parser)
             ( fullDesc
@@ -187,6 +209,8 @@ mainFunc dag wf = execParser opts >>= execute
             fullDesc <> progDesc "Recover database from backup.")
      <> command "backup" (info (helper <*> dumpDBParser) $
             fullDesc <> progDesc "Backup database.")
+     <> command "execFunc" (info (helper <*> callParser) $
+            fullDesc <> progDesc "Do not call this directly.")
      )
 
 
@@ -207,7 +231,7 @@ defaultMain = defaultMainWith defaultMainOpts
 defaultMainWith :: MainOpts -> Builder () -> Q [Dec]
 defaultMainWith opts builder = do
     wf_q <- buildWorkflow wfName builder
-    main_q <- [d| main = $(varE $ preAction opts) mainFunc dag $(varE $ mkName wfName)
+    main_q <- [d| main = $(varE $ preAction opts) $ mainFunc dag $(varE $ mkName wfName)
               |]
     return $ wf_q ++ main_q
   where

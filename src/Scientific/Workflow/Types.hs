@@ -15,6 +15,7 @@ module Scientific.Workflow.Types
     , db
     , procStatus
     , procParaControl
+    , remote
     , Processor
     , RunOpt(..)
     , DBData(..)
@@ -54,7 +55,7 @@ instance (FromJSON a, ToJSON a, S.Serialize a) => DBData a where
     readYaml = fromJust . decode
 
 -- | An abstract type representing the database used to store states of workflow
-data WorkflowDB  = WorkflowDB Connection
+newtype WorkflowDB  = WorkflowDB Connection
 
 -- | The id of a node
 type PID = T.Text
@@ -68,6 +69,7 @@ data WorkflowState = WorkflowState
     { _db          :: WorkflowDB
     , _procStatus  :: M.Map PID (MVar NodeResult)
     , _procParaControl :: MVar () -- ^ concurrency controller
+    , _remote :: Bool
     }
 
 makeLenses ''WorkflowState
@@ -85,6 +87,7 @@ data Workflow = Workflow [PID] (M.Map String Closure) (Processor () ())
 data RunOpt = RunOpt
     { database :: FilePath
     , nThread :: Int      -- ^ number of concurrent processes
+    , runOnRemote :: Bool
     }
 
 -- | Node attribute

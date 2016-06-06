@@ -18,7 +18,7 @@ Features:
 
 2. Automatic Checkpointing: The result of each intermediate step is stored, allowing easy restart upon failures.
 
-3. Parallelism and grid computing support: Independent computational steps will run concurrently. And users can decide whether to run steps locally or on remote compute nodes in a grid system (have not released yet).
+3. Parallelism and grid computing support: Independent computational steps will run concurrently. And users can decide whether to run steps locally or on remote compute nodes in a grid system.
 
 Here is a simple example. (Since we use template haskell, we need to divide this small program into two files.)
 

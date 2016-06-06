@@ -13,7 +13,7 @@ import Control.Concurrent
 import Scientific.Workflow
 
 --test :: String -> () -> IO ()
-test i _ = replicateM_ 2 $ do
+test i _ = replicateM_ 3 $ do
     threadDelay 2000000
     putStrLn i
 
@@ -23,6 +23,6 @@ builder = do
     node "step0" [| test "0" :: () -> IO () |] $ return ()
     node "step1" [| test "1" :: () -> IO () |] $ return ()
     node "step2" [| test "2" :: () -> IO () |] $ return ()
-
-    ["step0"] ~> "step1"
-    ["step0"] ~> "step2"
+    node "step3" [| test "3" :: () -> IO () |] $ return ()
+    node "step4" [| test "4" :: () -> IO () |] $ return ()
+    node "step5" [| test "5" :: () -> IO () |] $ return ()
