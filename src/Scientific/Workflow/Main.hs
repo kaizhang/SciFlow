@@ -4,8 +4,8 @@
 
 module Scientific.Workflow.Main
     ( defaultMain
-    , defaultMainWith
     , defaultMainOpts
+    , mainWith
     , MainOpts(..)
     ) where
 
@@ -173,8 +173,10 @@ callExe _ _ = undefined
 {-# INLINE callExe #-}
 
 
-mainFunc :: Gr (PID, Attribute) Int -> Workflow -> IO ()
-mainFunc dag wf = execParser opts >>= execute
+mainFunc :: Gr (PID, Attribute) Int -> Workflow
+         -> String  -- program header
+         -> IO ()
+mainFunc dag wf h = execParser opts >>= execute
   where
     execute cmd@(Run _ _ _) = runExe cmd wf
     execute View = viewExe dag
@@ -185,9 +187,7 @@ mainFunc dag wf = execParser opts >>= execute
     execute cmd@(DumpDB _ _) = dumpDBExe cmd wf
     execute cmd@(Call _ _ _) = callExe cmd wf
 
-    opts = info (helper <*> parser)
-            ( fullDesc
-           <> header (printf "SciFlow-%s" (showVersion version)) )
+    opts = info (helper <*> parser) $ fullDesc <> header h
     parser = subparser $ (
         command "run" (info (helper <*> runParser) $
             fullDesc <> progDesc "run workflow")
@@ -212,23 +212,28 @@ data MainOpts = MainOpts
     { preAction :: Name    -- ^ An action to be execute before the workflow. The
                            -- action should have type: IO () -> IO ().
                             -- ^ i.e., some initialization processes.
+    , programHeader :: String
     }
 
 T.deriveLift ''MainOpts
 
 defaultMainOpts :: MainOpts
-defaultMainOpts = MainOpts 'id
+defaultMainOpts = MainOpts
+    { preAction = 'id
+    , programHeader = printf "SciFlow-%s" (showVersion version)
+    }
 
 defaultMain :: Builder () -> Q [Dec]
-defaultMain = defaultMainWith defaultMainOpts
+defaultMain = mainWith defaultMainOpts
 
-defaultMainWith :: MainOpts -> Builder () -> Q [Dec]
-defaultMainWith opts builder = do
+mainWith :: MainOpts -> Builder () -> Q [Dec]
+mainWith opts builder = do
     wf_q <- buildWorkflow wfName builder
-    main_q <- [d| main = $(varE $ preAction opts) $ mainFunc dag $(varE $ mkName wfName)
+    main_q <- [d| main = $(varE $ preAction opts) $
+                    mainFunc dag $(varE $ mkName wfName) (programHeader opts)
               |]
     return $ wf_q ++ main_q
   where
     wfName = "sciFlowDefaultMain"
     dag = nmap (\(a,(_,b)) -> (a,b)) $ mkDAG builder
-{-# INLINE defaultMainWith #-}
+{-# INLINE mainWith #-}

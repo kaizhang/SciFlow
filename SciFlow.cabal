@@ -39,13 +39,17 @@ library
   if flag(debug)
     CPP-Options: -DDEBUG
 
+--  if flag(sge)
+--    CPP-Options: -DSGE
+--    build-depends: drmaa
+
   build-depends:
       base >=4.0 && <5.0
     , bytestring
     , containers
     , cereal
-    , drmaa
     , directory
+    , drmaa
     , executable-path
     , fgl
     , graphviz

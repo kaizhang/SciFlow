@@ -27,7 +27,7 @@ import Data.Graph.Inductive.Graph ( mkGraph, lab, labNodes, labEdges, outdeg
                                   , lpre, labnfilter, nfilter, gmap, suc, subgraph )
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.List (sortBy)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord (comparing)
 import qualified Data.Map as M
 
@@ -112,12 +112,12 @@ buildWorkflow prefix b = mkWorkflow prefix $ mkDAG b
 
 -- | Build only a part of the workflow that has not been executed. This is used
 -- during development for fast compliation.
-buildWorkflowPart :: RunOpt
+buildWorkflowPart :: FilePath   -- ^ path to the db
                   -> String
                   -> Builder ()
                   -> Q [Dec]
-buildWorkflowPart opts wfName b = do
-    st <- runIO $ getWorkflowState $ database opts
+buildWorkflowPart db wfName b = do
+    st <- runIO $ getWorkflowState db
     mkWorkflow wfName $ trimDAG st $ mkDAG b
   where
     getWorkflowState dir = do
@@ -240,7 +240,7 @@ mkProc pid f = \input -> do
 #endif
 
             let b = attr^.batch
-                r = wfState^.remote
+                r = fromMaybe (wfState^.remote) $ attr^.submitToRemote
             result <- liftIO $ try $ case () of
                 _ | b > 0 -> do
                     let (mkBatch, combineResult) = batchFunction f b

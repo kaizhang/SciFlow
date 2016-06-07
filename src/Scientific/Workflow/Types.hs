@@ -31,6 +31,7 @@ module Scientific.Workflow.Types
     , label
     , note
     , batch
+    , submitToRemote
     ) where
 
 import qualified Data.Serialize as S
@@ -95,6 +96,7 @@ data Attribute = Attribute
     { _label :: T.Text  -- ^ short description
     , _note  :: T.Text   -- ^ long description
     , _batch :: Int
+    , _submitToRemote :: Maybe Bool  -- ^ overwrite the global option
     }
 
 makeLenses ''Attribute
@@ -104,6 +106,7 @@ defaultAttribute = Attribute
     { _label = ""
     , _note = ""
     , _batch = -1
+    , _submitToRemote = Nothing
     }
 
 type AttributeSetter = State Attribute ()
