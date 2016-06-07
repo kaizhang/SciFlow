@@ -1,12 +1,11 @@
 module Scientific.Workflow
     ( runWorkflow
-    , getWorkflowState
     , module Scientific.Workflow.Builder
     , module Scientific.Workflow.Types
     ) where
 
+import           Control.Concurrent          (forkIO)
 import           Control.Concurrent.MVar
-import           Control.Concurrent (forkIO)
 import           Control.Exception           (bracket, displayException)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
@@ -22,11 +21,9 @@ import           Text.Printf                 (printf)
 runWorkflow :: Workflow -> RunOpt -> IO ()
 runWorkflow (Workflow pids _ wf) opts = bracket (openDB $ database opts) closeDB $ \db -> do
     ks <- S.fromList <$> getKeys db
-    pidStateMap <- fmap M.fromList $ forM pids $ \pid -> do
-        v <- if pid `S.member` ks
-                then newMVar Success
-                else newMVar Scheduled
-        return (pid, v)
+    pidStateMap <- flip M.traverseWithKey pids $ \pid attr -> do
+        v <- if pid `S.member` ks then newMVar Success else newMVar Scheduled
+        return (v, attr)
     para <- newEmptyMVar
     forkIO $ replicateM_ (nThread opts) $ putMVar para ()
     let initState = WorkflowState db pidStateMap para $ runOnRemote opts

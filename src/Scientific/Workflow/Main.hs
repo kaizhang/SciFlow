@@ -11,19 +11,18 @@ module Scientific.Workflow.Main
 
 import           Control.Monad                     (forM_)
 import qualified Data.ByteString.Char8             as B
-import           Data.Graph.Inductive.Graph        (labEdges, labNodes, mkGraph,
-                                                    nmap)
+import           Data.Graph.Inductive.Graph        (nmap)
 import           Data.Graph.Inductive.PatriciaTree (Gr)
 import qualified Data.Map                          as M
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy.IO                 as T
+import           DRMAA                             (withSGESession)
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift          as T
 import           Options.Applicative               hiding (runParser)
 import           Shelly                            (fromText, lsT, mkdir_p,
                                                     rm_f, shelly)
 import           Text.Printf                       (printf)
-import DRMAA (withSGESession)
 
 import           Scientific.Workflow
 import           Scientific.Workflow.DB
@@ -31,11 +30,6 @@ import           Scientific.Workflow.Visualize
 
 import           Data.Version                      (showVersion)
 import           Paths_SciFlow                     (version)
-
-T.deriveLift ''Attribute
-
-instance T.Lift (Gr (PID, Attribute) Int) where
-  lift gr = [| uncurry mkGraph $(T.lift (labNodes gr, labEdges gr)) |]
 
 
 data CMD = Run GlobalOpts Int Bool

@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE CPP #-}
 
 module Scientific.Workflow.Builder
@@ -13,7 +12,6 @@ module Scientific.Workflow.Builder
     , Builder
     , buildWorkflow
     , buildWorkflowPart
-    , getWorkflowState
     , mkDAG
     ) where
 
@@ -23,25 +21,15 @@ import Control.Monad.Trans.Except (throwE)
 import           Control.Monad.State
 import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
-import Data.IORef
+import Control.Concurrent.Async.Lifted (concurrently, mapConcurrently)
 import qualified Data.Text           as T
-import Data.Graph.Inductive.Graph
-    ( mkGraph
-    , lab
-    , labNodes
-    , outdeg
-    , lpre
-    , labnfilter
-    , nfilter
-    , gmap
-    , suc
-    , subgraph )
+import Data.Graph.Inductive.Graph ( mkGraph, lab, labNodes, labEdges, outdeg
+                                  , lpre, labnfilter, nfilter, gmap, suc, subgraph )
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.List (sortBy)
 import Data.Maybe (fromJust)
 import Data.Ord (comparing)
 import qualified Data.Map as M
-import System.IO.Unsafe (unsafePerformIO)
 
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift as T
@@ -51,14 +39,19 @@ import Scientific.Workflow.DB
 import Scientific.Workflow.Utils (debug, runRemote)
 import Text.Printf (printf)
 
-import Control.Concurrent.Async.Lifted (concurrently)
 
+
+T.deriveLift ''M.Map
+T.deriveLift ''Attribute
 
 instance T.Lift T.Text where
   lift t = [| T.pack $(T.lift $ T.unpack t) |]
 
+instance T.Lift (Gr (PID, Attribute) Int) where
+  lift gr = [| uncurry mkGraph $(T.lift (labNodes gr, labEdges gr)) |]
 
--- | The order of edges
+
+-- | The order of incoming edges of a node
 type EdgeOrd = Int
 
 -- | A computation node
@@ -67,10 +60,13 @@ type Node = (PID, (ExpQ, Attribute))
 -- | Links between computational nodes
 type Edge = (PID, PID, EdgeOrd)
 
+type Function = (PID, ExpQ)
+
 type Builder = State ([Node], [Edge])
 
 
--- | Declare a computational node
+-- | Declare a computational node. The function must have the signature:
+-- (DBData a, DBData b) => a -> IO b
 node :: ToExpQ q
      => PID                  -- ^ node id
      -> q                    -- ^ function
@@ -81,6 +77,12 @@ node p fn setAttr = modify $ _1 %~ (newNode:)
     attr = execState setAttr defaultAttribute
     newNode = (p, (toExpQ fn, attr))
 {-# INLINE node #-}
+
+
+-- | Declare a function that can be called on remote
+--function :: ToExpQ q => T.Text -> q -> Builder ()
+--function funcName fn =
+
 
 -- | many-to-one generalized link function
 link :: [PID] -> PID -> Builder ()
@@ -117,14 +119,11 @@ buildWorkflowPart :: RunOpt
 buildWorkflowPart opts wfName b = do
     st <- runIO $ getWorkflowState $ database opts
     mkWorkflow wfName $ trimDAG st $ mkDAG b
-
-getWorkflowState :: FilePath -> IO WorkflowState
-getWorkflowState dir = do
-    db <- openDB dir
-    ks <- getKeys db
-    vs <- replicateM (length ks) $ newMVar Success
-    return $ WorkflowState db (M.fromList $ zip ks vs) undefined undefined
-{-# INLINE getWorkflowState #-}
+  where
+    getWorkflowState dir = do
+        db <- openDB dir
+        ks <- getKeys db
+        return $ M.fromList $ zip ks $ repeat Success
 
 -- | Objects that can be converted to ExpQ
 class ToExpQ a where
@@ -153,7 +152,7 @@ mkDAG b = mkGraph ns' es'
 {-# INLINE mkDAG #-}
 
 -- | Remove nodes that are executed before from a DAG.
-trimDAG :: WorkflowState -> DAG -> DAG
+trimDAG :: (M.Map T.Text NodeResult) -> DAG -> DAG
 trimDAG st dag = gmap revise gr
   where
     revise context@(linkTo, _, lab, linkFrom)
@@ -165,13 +164,9 @@ trimDAG st dag = gmap revise gr
       where
         f (i, (x,_)) = (not . done) x || any (not . done) children
           where children = map (fst . fromJust . lab dag) $ suc dag i
-    done x = case M.lookup x (st^.procStatus) of
-        Nothing -> False
-        Just v -> unsafePerformIO $ do
-            v' <- tryReadMVar v
-            case v' of
-                Just Success -> return True
-                _ -> return False
+    done x = case M.lookup x st of
+        Just Success -> True
+        _ -> False
 {-# INLINE trimDAG #-}
 
 
@@ -202,7 +197,7 @@ mkWorkflow workflowName dag = do
   where
     functionTableName = workflowName ++ "_function_table"
     computeNodes = snd $ unzip $ labNodes dag
-    pids = fst $ unzip computeNodes
+    pids = M.fromList $ map (\(i, x) -> (i, snd x)) computeNodes
     sinks = labNodes $ nfilter ((==0) . outdeg dag) dag
 
     backTrack sink = connect sources $ mkNodeVar sink
@@ -220,10 +215,11 @@ mkWorkflow workflowName dag = do
     mkNodeVar = varE . mkName . T.unpack . fst . snd
 {-# INLINE mkWorkflow #-}
 
-mkProc :: (DBData a, DBData b) => PID -> (a -> IO b) -> (Processor a b)
+mkProc :: (BatchData' (IsList a b) a b, BatchData a b, DBData a, DBData b)
+       => PID -> (a -> IO b) -> (Processor a b)
 mkProc pid f = \input -> do
     wfState <- get
-    let pSt = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
+    let (pSt, attr) = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
 
     pStValue <- liftIO $ takeMVar pSt
     case pStValue of
@@ -243,9 +239,16 @@ mkProc pid f = \input -> do
             debug $ printf "Running node: %s" pid
 #endif
 
-            result <- liftIO $ try $ case wfState^.remote of
-                True -> runRemote pid input
-                _ -> f input
+            let b = attr^.batch
+                r = wfState^.remote
+            result <- liftIO $ try $ case () of
+                _ | b > 0 -> do
+                    let (mkBatch, combineResult) = batchFunction f b
+                        input' = mkBatch input
+                    combineResult <$> if r
+                        then mapConcurrently (runRemote pid) input'
+                        else mapM f input'
+                  | otherwise -> if r then runRemote pid input else f input
             case result of
                 Left ex -> do
                     liftIO $ do
