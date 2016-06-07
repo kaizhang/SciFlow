@@ -79,9 +79,11 @@ node p fn setAttr = modify $ _1 %~ (newNode:)
 {-# INLINE node #-}
 
 
--- | Declare a function that can be called on remote
---function :: ToExpQ q => T.Text -> q -> Builder ()
---function funcName fn =
+{-
+ Declare a function that can be called on remote
+function :: ToExpQ q => T.Text -> q -> Builder ()
+function funcName fn =
+-}
 
 
 -- | many-to-one generalized link function
@@ -103,9 +105,9 @@ path ns = foldM_ f (head ns) $ tail ns
 
 -- | Build the workflow. This function will first create functions defined in
 -- the builder. These pieces will then be assembled to form a function that will
--- execute each individual function in a correct order, named $prefix$_sciflow.
--- Lastly, a function table will be created with the name $prefix$_function_table.
-buildWorkflow :: String     -- ^ prefix
+-- execute each individual function in a correct order, named $name$.
+-- Lastly, a function table will be created with the name $name$_function_table.
+buildWorkflow :: String     -- ^ name
               -> Builder ()
               -> Q [Dec]
 buildWorkflow prefix b = mkWorkflow prefix $ mkDAG b
@@ -173,8 +175,8 @@ trimDAG st dag = gmap revise gr
 -- Generate codes from a DAG. This function will create functions defined in
 -- the builder. These pieces will be assembled to form a function that will
 -- execute each individual function in a correct order.
--- Lastly, a function table will be created with the name $prefix$_function_table.
-mkWorkflow :: String   -- prefix
+-- Lastly, a function table will be created with the name $name$_function_table.
+mkWorkflow :: String   -- name
            -> DAG -> Q [Dec]
 mkWorkflow workflowName dag = do
     -- write node funcitons

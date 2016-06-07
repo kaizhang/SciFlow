@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE CPP #-}
 
 module Scientific.Workflow.Main
     ( defaultMain
@@ -16,6 +17,11 @@ import           Data.Graph.Inductive.PatriciaTree (Gr)
 import qualified Data.Map                          as M
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy.IO                 as T
+
+#ifdef SGE
+import DRMAA (withSGESession)
+#endif
+
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift          as T
 import           Options.Applicative               hiding (runParser)
@@ -62,7 +68,11 @@ runParser = Run
         ( long "remote"
        <> help "Submit jobs to remote machines.")
 runExe initialize (Run opts n r) wf
+#ifdef SGE
+    | r = initialize $ withSGESession $ runWorkflow wf $ RunOpt (dbPath opts) n True
+#else
     | r = initialize $ runWorkflow wf $ RunOpt (dbPath opts) n True
+#endif
     | otherwise = runWorkflow wf $ RunOpt (dbPath opts) n False
 runExe _ _ _ = undefined
 {-# INLINE runExe #-}

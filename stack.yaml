@@ -1,11 +1,12 @@
 flags:
     SciFlow:
         debug: true
+        sge: true
 
 packages:
     - '.'
-#    - '../drmaa-haskell/'
 
-extra-deps: []
+extra-deps:
+    - drmaa-0.1.0.0
 
 resolver: lts-6.1
