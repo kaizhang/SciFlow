@@ -30,14 +30,14 @@ import Data.List (sortBy)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord (comparing)
 import qualified Data.Map as M
+import Text.Printf (printf)
 
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift as T
 
 import Scientific.Workflow.Types
 import Scientific.Workflow.DB
-import Scientific.Workflow.Utils (debug, runRemote)
-import Text.Printf (printf)
+import Scientific.Workflow.Utils (debug, runRemote, defaultRemoteOpts)
 
 
 
@@ -245,9 +245,11 @@ mkProc pid f = \input -> do
                     let (mkBatch, combineResult) = batchFunction f $ attr^.batch
                         input' = mkBatch input
                     combineResult <$> if sendToRemote
-                        then mapConcurrently (runRemote pid) input'
+                        then mapConcurrently (runRemote defaultRemoteOpts pid) input'
                         else mapM f input'
-                  | otherwise -> if sendToRemote then runRemote pid input else f input
+                  | otherwise -> if sendToRemote
+                      then runRemote defaultRemoteOpts pid input
+                      else f input
             case result of
                 Left ex -> do
                     _ <- liftIO $ do

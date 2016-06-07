@@ -89,8 +89,14 @@ import Scientific.Workflow.Main
 defaultMain F.builder
 ```
 
-The workflow can be visualized by running `runghc main.hs view | dot -Tpng > example.png`.
+Use `ghc main.hs -threaded` to compile the program. And type `./main --help` to
+see available commands. For example, the workflow can be visualized by running
+`./main view | dot -Tpng > example.png`, as shown below.
 
 ![example](example.png)
 
-To run the workflow, simply type `runghc main.hs run`. The program will create a directory to store results of each step. If being terminated prematurely, the program will use the saved data to continue from the last step.
+To run the workflow, simply type `./main run`. The program will create a sqlite database to store intermediate results. If being terminated prematurely, the program will use the saved data to continue from the last step.
+
+To enable grid compute engine support, you need to have DRMAA C library installed
+and compile the SciFlow with `-f sge` flag. Use `./main run --remote` to submit jobs
+to remote machines.

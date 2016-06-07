@@ -30,17 +30,25 @@ error' txt = B.hPutStrLn stderr $ B.concat $
     prefix = bold $ chunk "[ERROR] " & fore red
 
 data RemoteOpts = RemoteOpts
+    { extraParams :: String
+    }
 
-runRemote :: (DBData a, DBData b) => T.Text -> a -> IO b
+defaultRemoteOpts :: RemoteOpts
+defaultRemoteOpts = RemoteOpts
+    { extraParams = ""
+    }
+
+runRemote :: (DBData a, DBData b) => RemoteOpts -> T.Text -> a -> IO b
 #ifdef SGE
-runRemote pid input = withTmpFile tmpDir $ \inputFl -> withTmpFile tmpDir $ \outputFl -> do
-    exePath <- getExecutablePath
-    wd <- getCurrentDirectory
+runRemote opts pid input = withTmpFile tmpDir $ \inputFl -> withTmpFile tmpDir $
+    \outputFl -> do
+        exePath <- getExecutablePath
+        wd <- getCurrentDirectory
+        let config = defaultDrmaaConfig{drmaa_wd=wd, drmaa_native=extraParams opts}
 
-    B.writeFile inputFl $ serialize input
-    drmaaRun exePath ["execFunc", T.unpack pid, inputFl, outputFl]
-        defaultDrmaaConfig{drmaa_wd=wd} :: IO ()
-    deserialize <$> B.readFile outputFl
+        B.writeFile inputFl $ serialize input
+        drmaaRun exePath ["execFunc", T.unpack pid, inputFl, outputFl] config :: IO ()
+        deserialize <$> B.readFile outputFl
   where
     tmpDir = "./"
 #else
