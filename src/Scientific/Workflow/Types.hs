@@ -23,7 +23,7 @@ module Scientific.Workflow.Types
     , RunOpt(..)
     , BatchData(..)
     , BatchData'(..)
-    , IsList(..)
+    , IsList
     , DBData(..)
     , Attribute(..)
     , AttributeSetter

@@ -1,18 +1,21 @@
+{-# LANGUAGE CPP #-}
 module Scientific.Workflow.Utils where
 
 import qualified Data.ByteString.Char8         as B
 import qualified Data.Text                     as T
 import           Debug.Trace                   (traceM)
-import           DRMAA                         (DrmaaAttribute (..),
-                                                defaultDrmaaConfig, drmaaRun,
-                                                withTmpFile)
 import           Rainbow
-import           Shelly                        hiding (FilePath)
 import           System.IO
 
 import           Scientific.Workflow.Types     (DBData (..))
 import           System.Directory              (getCurrentDirectory)
 import           System.Environment.Executable (getExecutablePath)
+
+#ifdef SGE
+import           DRMAA                         (DrmaaAttribute (..),
+                                                defaultDrmaaConfig, drmaaRun,
+                                                withTmpFile)
+#endif
 
 debug :: Monad m => String -> m ()
 debug txt = traceM $ B.unpack $ B.concat $
@@ -29,6 +32,7 @@ error' txt = B.hPutStrLn stderr $ B.concat $
 data RemoteOpts = RemoteOpts
 
 runRemote :: (DBData a, DBData b) => T.Text -> a -> IO b
+#ifdef SGE
 runRemote pid input = withTmpFile tmpDir $ \inputFl -> withTmpFile tmpDir $ \outputFl -> do
     exePath <- getExecutablePath
     wd <- getCurrentDirectory
@@ -39,3 +43,6 @@ runRemote pid input = withTmpFile tmpDir $ \inputFl -> withTmpFile tmpDir $ \out
     deserialize <$> B.readFile outputFl
   where
     tmpDir = "./"
+#else
+runRemote = error "SGE support was not turned on."
+#endif

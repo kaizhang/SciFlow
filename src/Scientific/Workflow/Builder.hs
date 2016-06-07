@@ -15,8 +15,8 @@ module Scientific.Workflow.Builder
     , mkDAG
     ) where
 
-import Control.Lens ((^.), (%~), _1, _2, _3, at, (.=))
-import Control.Exception (try, displayException)
+import Control.Lens ((^.), (%~), _1, _2, _3, at)
+import Control.Exception (try)
 import Control.Monad.Trans.Except (throwE)
 import           Control.Monad.State
 import Control.Concurrent.MVar
@@ -24,7 +24,7 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.Async.Lifted (concurrently, mapConcurrently)
 import qualified Data.Text           as T
 import Data.Graph.Inductive.Graph ( mkGraph, lab, labNodes, labEdges, outdeg
-                                  , lpre, labnfilter, nfilter, gmap, suc, subgraph )
+                                  , lpre, labnfilter, nfilter, gmap, suc )
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.List (sortBy)
 import Data.Maybe (fromJust, fromMaybe)
@@ -155,11 +155,11 @@ mkDAG b = mkGraph ns' es'
 trimDAG :: (M.Map T.Text NodeResult) -> DAG -> DAG
 trimDAG st dag = gmap revise gr
   where
-    revise context@(linkTo, _, lab, linkFrom)
+    revise context@(linkTo, _, lab, _)
         | done (fst lab) && null linkTo = _3._2._1 %~ e $ context
         | otherwise = context
       where
-        e x = [| const undefined >=> $(x) |]
+        e x = [| (\() -> undefined) >=> $(x) |]
     gr = labnfilter f dag
       where
         f (i, (x,_)) = (not . done) x || any (not . done) children
@@ -233,32 +233,31 @@ mkProc pid f = \input -> do
 
             readData pid $ wfState^.db
         Scheduled -> do
-            liftIO $ takeMVar $ wfState^.procParaControl
+            _ <- liftIO $ takeMVar $ wfState^.procParaControl
 
 #ifdef DEBUG
             debug $ printf "Running node: %s" pid
 #endif
 
-            let b = attr^.batch
-                r = fromMaybe (wfState^.remote) $ attr^.submitToRemote
+            let sendToRemote = fromMaybe (wfState^.remote) (attr^.submitToRemote)
             result <- liftIO $ try $ case () of
-                _ | b > 0 -> do
-                    let (mkBatch, combineResult) = batchFunction f b
+                _ | attr^.batch > 0 -> do
+                    let (mkBatch, combineResult) = batchFunction f $ attr^.batch
                         input' = mkBatch input
-                    combineResult <$> if r
+                    combineResult <$> if sendToRemote
                         then mapConcurrently (runRemote pid) input'
                         else mapM f input'
-                  | otherwise -> if r then runRemote pid input else f input
+                  | otherwise -> if sendToRemote then runRemote pid input else f input
             case result of
                 Left ex -> do
-                    liftIO $ do
+                    _ <- liftIO $ do
                         putMVar pSt $ Fail ex
                         forkIO $ putMVar (wfState^.procParaControl) ()
                     lift (throwE (pid, ex))
                 Right r -> liftIO $ do
                     saveData pid r $ wfState^.db
                     putMVar pSt Success
-                    forkIO $ putMVar (wfState^.procParaControl) ()
+                    _ <- forkIO $ putMVar (wfState^.procParaControl) ()
                     return r
 {-# INLINE mkProc #-}
 

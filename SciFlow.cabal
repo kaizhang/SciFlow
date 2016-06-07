@@ -18,8 +18,12 @@ extra-source-files:
   README.md
   example.png
 
-Flag Debug
+Flag debug
   Description: Enable debug support
+  Default:     False
+
+Flag sge
+  Description: Enable SGE support
   Default:     False
 
 library
@@ -39,9 +43,9 @@ library
   if flag(debug)
     CPP-Options: -DDEBUG
 
---  if flag(sge)
---    CPP-Options: -DSGE
---    build-depends: drmaa
+  if flag(sge)
+    CPP-Options: -DSGE
+    build-depends: drmaa
 
   build-depends:
       base >=4.0 && <5.0
@@ -49,7 +53,6 @@ library
     , containers
     , cereal
     , directory
-    , drmaa
     , executable-path
     , fgl
     , graphviz

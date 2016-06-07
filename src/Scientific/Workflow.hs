@@ -25,7 +25,7 @@ runWorkflow (Workflow pids _ wf) opts = bracket (openDB $ database opts) closeDB
         v <- if pid `S.member` ks then newMVar Success else newMVar Scheduled
         return (v, attr)
     para <- newEmptyMVar
-    forkIO $ replicateM_ (nThread opts) $ putMVar para ()
+    _ <- forkIO $ replicateM_ (nThread opts) $ putMVar para ()
     let initState = WorkflowState db pidStateMap para $ runOnRemote opts
     result <- runExceptT $ evalStateT (wf ()) initState
     case result of

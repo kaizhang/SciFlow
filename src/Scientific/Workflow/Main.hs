@@ -16,7 +16,6 @@ import           Data.Graph.Inductive.PatriciaTree (Gr)
 import qualified Data.Map                          as M
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy.IO                 as T
-import           DRMAA                             (withSGESession)
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift          as T
 import           Options.Applicative               hiding (runParser)
@@ -62,10 +61,10 @@ runParser = Run
     <*> switch
         ( long "remote"
        <> help "Submit jobs to remote machines.")
-runExe (Run opts n r) wf
-    | r = withSGESession $ runWorkflow wf $ RunOpt (dbPath opts) n True
+runExe initialize (Run opts n r) wf
+    | r = initialize $ runWorkflow wf $ RunOpt (dbPath opts) n True
     | otherwise = runWorkflow wf $ RunOpt (dbPath opts) n False
-runExe _ _ = undefined
+runExe _ _ _ = undefined
 {-# INLINE runExe #-}
 
 viewParser :: Parser CMD
@@ -173,12 +172,13 @@ callExe _ _ = undefined
 {-# INLINE callExe #-}
 
 
-mainFunc :: Gr (PID, Attribute) Int -> Workflow
+mainFunc :: (IO () -> IO ()) -- initialization function
+         -> Gr (PID, Attribute) Int -> Workflow
          -> String  -- program header
          -> IO ()
-mainFunc dag wf h = execParser opts >>= execute
+mainFunc initialize dag wf h = execParser opts >>= execute
   where
-    execute cmd@(Run _ _ _) = runExe cmd wf
+    execute cmd@(Run _ _ _) = runExe initialize cmd wf
     execute View = viewExe dag
     execute cmd@(Cat _ _) = catExe cmd wf
     execute cmd@(Write _ _ _) = writeExe cmd wf
@@ -229,8 +229,8 @@ defaultMain = mainWith defaultMainOpts
 mainWith :: MainOpts -> Builder () -> Q [Dec]
 mainWith opts builder = do
     wf_q <- buildWorkflow wfName builder
-    main_q <- [d| main = $(varE $ preAction opts) $
-                    mainFunc dag $(varE $ mkName wfName) (programHeader opts)
+    main_q <- [d| main = mainFunc $(varE $ preAction opts) dag
+                    $(varE $ mkName wfName) (programHeader opts)
               |]
     return $ wf_q ++ main_q
   where
