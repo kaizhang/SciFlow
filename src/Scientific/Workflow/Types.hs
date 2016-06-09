@@ -10,7 +10,7 @@
 module Scientific.Workflow.Types
     ( WorkflowDB(..)
     , Workflow(..)
-    , Closure(..)
+    , DynFunction(..)
     , PID
     , NodeResult(..)
     , ProcState
@@ -129,12 +129,12 @@ type ProcState b = StateT WorkflowState (ExceptT (PID, SomeException) IO) b
 type Processor a b = a -> ProcState b
 
 
-data Closure where
-    Closure :: (DBData a, DBData b) => (a -> IO b) -> Closure
+data DynFunction where
+    DynFunction :: (DBData a, DBData b) => (a -> IO b) -> DynFunction
 
 -- | A Workflow is a DAG
 data Workflow = Workflow (M.Map T.Text Attribute)
-                         (M.Map String Closure)
+                         (M.Map String DynFunction)
                          (Processor () ())
 
 data RunOpt = RunOpt

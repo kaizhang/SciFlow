@@ -139,6 +139,7 @@ instance ToExpQ ExpQ where
 
 type DAG = Gr Node EdgeOrd
 
+-- TODO: check the graph is a valid DAG
 -- | Contruct a DAG representing the workflow
 mkDAG :: Builder () -> DAG
 mkDAG b = mkGraph ns' es'
@@ -179,23 +180,19 @@ trimDAG st dag = gmap revise gr
 mkWorkflow :: String   -- name
            -> DAG -> Q [Dec]
 mkWorkflow workflowName dag = do
-    -- write node funcitons
-    functions <- fmap concat $ forM computeNodes $ \(p, (fn,_)) -> [d|
-        $(varP $ mkName $ T.unpack p) = mkProc p $(fn) |]
-
     -- function table
     funcTable <-
         [d| $(varP $ mkName functionTableName) = M.fromList
                 $( fmap ListE $ forM computeNodes $ \(p, (fn, _)) ->
-                [| (T.unpack p, Closure $(fn)) |] ) |]
+                [| (T.unpack p, DynFunction $(fn)) |] ) |]
 
-    -- define workflows
+    -- define the workflow
     workflows <-
         [d| $(varP $ mkName workflowName) = Workflow pids
                 $(varE $ mkName functionTableName)
                 $(connect sinks [| const $ return () |]) |]
 
-    return $ functions ++ funcTable ++ workflows
+    return $ funcTable ++ workflows
   where
     functionTableName = workflowName ++ "_function_table"
     computeNodes = snd $ unzip $ labNodes dag
@@ -214,7 +211,7 @@ mkWorkflow workflowName dag = do
       where
         e0 = [| (pure. pure) $(conE (tupleDataName $ length sources)) |]
         g acc x = [| ((<*>) . fmap (<*>)) $(acc) $ fmap Parallel $(backTrack x) |]
-    mkNodeVar = varE . mkName . T.unpack . fst . snd
+    mkNodeVar (_, (p, (fn, _))) = [| mkProc p $fn |]
 {-# INLINE mkWorkflow #-}
 
 mkProc :: (BatchData' (IsList a b) a b, BatchData a b, DBData a, DBData b)

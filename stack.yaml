@@ -7,6 +7,6 @@ packages:
     - '.'
 
 extra-deps:
-    - drmaa-0.1.0.0
+    - drmaa-0.1.0.1
 
 resolver: lts-6.1

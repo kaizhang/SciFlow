@@ -90,7 +90,7 @@ catParser = Cat
 catExe (Cat opts pid) (Workflow _ ft _) = do
     db <- openDB $ dbPath opts
     case M.lookup pid ft of
-        Just (Closure fn) -> do
+        Just (DynFunction fn) -> do
             dat <- head [readData (T.pack pid) db, fn undefined]
             B.putStr $ showYaml dat
         Nothing -> return ()
@@ -108,7 +108,7 @@ writeExe (Write opts pid input) (Workflow _ ft _) = do
     db <- openDB $ dbPath opts
     c <- B.readFile input
     case M.lookup pid ft of
-        Just (Closure fn) -> do
+        Just (DynFunction fn) -> do
             dat <- head [return $ readYaml c, fn undefined]
             updateData (T.pack pid) dat db
         Nothing -> return ()
@@ -138,7 +138,7 @@ recoverExe (Recover opts dir) (Workflow _ ft _) = do
     forM_ fls $ \fl -> do
         let pid = snd $ T.breakOnEnd "/" fl
         case M.lookup (T.unpack pid) ft of
-            Just (Closure fn) -> do
+            Just (DynFunction fn) -> do
                 printf "Recovering node: %s.\n" pid
                 c <- B.readFile $ T.unpack fl
                 dat <- head [return $ readYaml c, fn undefined]
@@ -159,7 +159,7 @@ dumpDBExe (DumpDB opts dir) (Workflow _ ft _) = do
     forM_ nodes $ \pid -> do
         let fl = dir ++ "/" ++ T.unpack pid
         case M.lookup (T.unpack pid) ft of
-            Just (Closure fn) -> do
+            Just (DynFunction fn) -> do
                 printf "Saving node: %s.\n" pid
                 dat <- head [readData pid db, fn undefined]
                 B.writeFile fl $ showYaml dat
@@ -173,7 +173,7 @@ callParser = Call
          <*> strArgument mempty
          <*> strArgument mempty
 callExe (Call pid inputFl outputFl) (Workflow _ ft _) = case M.lookup pid ft of
-    Just (Closure fn) -> do
+    Just (DynFunction fn) -> do
         input <- deserialize <$> B.readFile inputFl
         output <- serialize <$> fn input
         B.writeFile outputFl output
