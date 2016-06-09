@@ -91,7 +91,7 @@ catExe (Cat opts pid) (Workflow _ ft _) = do
     db <- openDB $ dbPath opts
     case M.lookup pid ft of
         Just (DynFunction fn) -> do
-            dat <- head [readData (T.pack pid) db, fn undefined]
+            dat <- readData (T.pack pid) db `asTypeOf` fn undefined
             B.putStr $ showYaml dat
         Nothing -> return ()
 catExe _ _ = undefined
@@ -109,7 +109,7 @@ writeExe (Write opts pid input) (Workflow _ ft _) = do
     c <- B.readFile input
     case M.lookup pid ft of
         Just (DynFunction fn) -> do
-            dat <- head [return $ readYaml c, fn undefined]
+            dat <- return (readYaml c) `asTypeOf` fn undefined
             updateData (T.pack pid) dat db
         Nothing -> return ()
 writeExe _ _ = undefined
@@ -141,7 +141,7 @@ recoverExe (Recover opts dir) (Workflow _ ft _) = do
             Just (DynFunction fn) -> do
                 printf "Recovering node: %s.\n" pid
                 c <- B.readFile $ T.unpack fl
-                dat <- head [return $ readYaml c, fn undefined]
+                dat <- return (readYaml c) `asTypeOf` fn undefined
                 saveData pid dat db
             Nothing -> printf "Cannot identify node: %s. Skipped.\n" pid
 recoverExe _ _ = undefined
@@ -161,7 +161,7 @@ dumpDBExe (DumpDB opts dir) (Workflow _ ft _) = do
         case M.lookup (T.unpack pid) ft of
             Just (DynFunction fn) -> do
                 printf "Saving node: %s.\n" pid
-                dat <- head [readData pid db, fn undefined]
+                dat <- readData pid db `asTypeOf` fn undefined
                 B.writeFile fl $ showYaml dat
             Nothing -> return ()
 dumpDBExe _ _ = undefined

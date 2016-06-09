@@ -18,6 +18,7 @@ module Scientific.Workflow.Builder
 import Control.Lens ((^.), (%~), _1, _2, _3, at)
 import Control.Exception (try)
 import Control.Monad.Trans.Except (throwE)
+import Control.Monad.State.Lazy (runState)
 import           Control.Monad.State
 import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
@@ -181,38 +182,68 @@ mkWorkflow :: String   -- name
            -> DAG -> Q [Dec]
 mkWorkflow workflowName dag = do
     -- function table
+    {-
     funcTable <-
         [d| $(varP $ mkName functionTableName) = M.fromList
                 $( fmap ListE $ forM computeNodes $ \(p, (fn, _)) ->
                 [| (T.unpack p, DynFunction $(fn)) |] ) |]
+                -}
 
+    let (expq, funcExp) = runState (connect sinks [| const $ return () |]) $
+            flip map sinks $ \(_, (p, (fn, _))) -> [| (T.unpack p, DynFunction $fn) |]
     -- define the workflow
     workflows <-
         [d| $(varP $ mkName workflowName) = Workflow pids
-                $(varE $ mkName functionTableName)
-                $(connect sinks [| const $ return () |]) |]
+                $(varE $ mkName functionTableName) $expq |]
 
-    return $ funcTable ++ workflows
+    -- function table
+    -- TODO make sure the inferred types are equal for the same node
+    funcTable <-
+        [d| $(varP $ mkName functionTableName) = M.fromList $(listE funcExp) |]
+
+    return $ workflows ++ funcTable
   where
     functionTableName = workflowName ++ "_function_table"
     computeNodes = snd $ unzip $ labNodes dag
     pids = M.fromList $ map (\(i, x) -> (i, snd x)) computeNodes
     sinks = labNodes $ nfilter ((==0) . outdeg dag) dag
 
-    backTrack sink = connect sources $ mkNodeVar sink
+    backTrack (i, (p, (fn, _))) = do
+        case parents of
+            [] -> return ()
+            [((_, (p', (fn', _))), _)] -> modify $ (:)
+                [| (T.unpack p', DynFunction $ inferType $fn' $fn) |]
+            xs -> modify $ (++) ( flip map xs $ \((_, (p', (fn', _))), o) ->
+                [| (T.unpack p', DynFunction $ $(inferTypeN o n) $fn' $fn) |] )
+        connect (fst $ unzip parents) [| mkProc p $fn |]
       where
-        sources = map (\(x,_) -> (x, fromJust $ lab dag x)) $
-            sortBy (comparing snd) $ lpre dag $ fst sink
+        parents = map ( \(x, o) -> ((x, fromJust $ lab dag x), o) ) $
+            sortBy (comparing snd) $ lpre dag i
+        n = length parents
 
-    connect [] sink = sink
-    connect [source] sink = [| $(backTrack source) >=> $(sink) |]
-    connect sources sink = [| fmap runParallel $(foldl g e0 $ sources)
-        >=> $(sink) |]
+    connect [] sink = return $ sink
+    connect [source] sink = do
+        expq <- backTrack source
+        return [| $expq >=> $sink |]
+    connect sources sink = do
+        expq <- foldM g e0 $ sources
+        return [| fmap runParallel $expq >=> $sink |]
       where
         e0 = [| (pure. pure) $(conE (tupleDataName $ length sources)) |]
-        g acc x = [| ((<*>) . fmap (<*>)) $(acc) $ fmap Parallel $(backTrack x) |]
-    mkNodeVar (_, (p, (fn, _))) = [| mkProc p $fn |]
+        g acc x = do
+            expq <- backTrack x
+            return [| ((<*>) . fmap (<*>)) $acc $ fmap Parallel $expq |]
 {-# INLINE mkWorkflow #-}
+
+inferType :: (a -> IO b) -> (b -> IO c) -> (a -> IO b)
+inferType f g = let _ = f >=> g in f
+
+inferTypeN :: Int -> Int -> ExpQ
+inferTypeN i n = [|
+    let f' x = return $(tupE $ replicate i [|undefined|] ++ [[|x|]] ++
+            replicate (n-i-1) [|undefined|])
+    in \f g -> let _ = f >=> f' >=> g in f
+    |]
 
 mkProc :: (BatchData' (IsList a b) a b, BatchData a b, DBData a, DBData b)
        => PID -> (a -> IO b) -> (Processor a b)

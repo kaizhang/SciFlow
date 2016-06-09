@@ -11,7 +11,7 @@ import Text.Printf (printf)
 import Scientific.Workflow
 
 create :: () -> IO FilePath
-create _ = do
+create () = do
     writeFile "hello.txt" "hello world"
     return "hello.txt"
 
@@ -31,10 +31,10 @@ output (ws, cs) = do
     putStrLn $ printf "Number of characters: %d" cs
     return True
 
-cleanUp :: (Bool, FilePath) -> IO ()
-cleanUp (toBeRemoved, fl) = if toBeRemoved
-    then shelly $ rm $ fromText $ T.pack fl
-    else return ()
+cleanUp :: (Bool, FilePath) -> IO String
+cleanUp (toBeRemoved, fl) = do
+    when toBeRemoved $ shelly (rm $ fromText $ T.pack fl)
+    return "done"
 
 -- builder monad
 builder :: Builder ()
