@@ -9,22 +9,19 @@ module Scientific.Workflow.Builder
     , link
     , (~>)
     , path
-    , Builder
     , buildWorkflow
     , buildWorkflowPart
     , mkDAG
     ) where
 
-import Control.Lens ((^.), (%~), _1, _2, _3, at)
+import Control.Lens ((^.), (%~), _1, _2, _3)
 import Control.Exception (try)
 import Control.Monad.Trans.Except (throwE)
-import Control.Monad.State.Lazy (runState)
-import           Control.Monad.State
+import           Control.Monad.State (lift, liftIO, (>=>), foldM_, execState, modify, runState, foldM, State, get)
 import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
-import Control.Concurrent.Async.Lifted (concurrently, mapConcurrently)
 import qualified Data.Text           as T
-import Data.Graph.Inductive.Graph ( mkGraph, lab, labNodes, labEdges, outdeg
+import Data.Graph.Inductive.Graph ( mkGraph, lab, labNodes, outdeg
                                   , lpre, labnfilter, nfilter, gmap, suc )
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.List (sortBy)
@@ -32,38 +29,12 @@ import Data.Maybe (fromJust, fromMaybe)
 import Data.Ord (comparing)
 import qualified Data.Map as M
 import Text.Printf (printf)
-
+import Control.Concurrent.Async.Lifted (mapConcurrently)
 import           Language.Haskell.TH
-import qualified Language.Haskell.TH.Lift as T
 
 import Scientific.Workflow.Types
 import Scientific.Workflow.DB
 import Scientific.Workflow.Utils (debug, runRemote, defaultRemoteOpts)
-
-
-
-T.deriveLift ''M.Map
-T.deriveLift ''Attribute
-
-instance T.Lift T.Text where
-  lift t = [| T.pack $(T.lift $ T.unpack t) |]
-
-instance T.Lift (Gr (PID, Attribute) Int) where
-  lift gr = [| uncurry mkGraph $(T.lift (labNodes gr, labEdges gr)) |]
-
-
--- | The order of incoming edges of a node
-type EdgeOrd = Int
-
--- | A computation node
-type Node = (PID, (ExpQ, Attribute))
-
--- | Links between computational nodes
-type Edge = (PID, PID, EdgeOrd)
-
-type Function = (PID, ExpQ)
-
-type Builder = State ([Node], [Edge])
 
 
 -- | Declare a computational node. The function must have the signature:
@@ -181,14 +152,6 @@ trimDAG st dag = gmap revise gr
 mkWorkflow :: String   -- name
            -> DAG -> Q [Dec]
 mkWorkflow workflowName dag = do
-    -- function table
-    {-
-    funcTable <-
-        [d| $(varP $ mkName functionTableName) = M.fromList
-                $( fmap ListE $ forM computeNodes $ \(p, (fn, _)) ->
-                [| (T.unpack p, DynFunction $(fn)) |] ) |]
-                -}
-
     let (expq, funcExp) = runState (connect sinks [| const $ return () |]) $
             flip map sinks $ \(_, (p, (fn, _))) -> [| (T.unpack p, DynFunction $fn) |]
     -- define the workflow
@@ -292,17 +255,3 @@ mkProc pid f = \input -> do
                     _ <- forkIO $ putMVar (wfState^.procParaControl) ()
                     return r
 {-# INLINE mkProc #-}
-
-
-
---------------------------------------------------------------------------------
-
-newtype Parallel a = Parallel { runParallel :: ProcState a}
-
-instance Functor Parallel where
-    fmap f (Parallel a) = Parallel $ f <$> a
-
-instance Applicative Parallel where
-    pure = Parallel . pure
-    Parallel fs <*> Parallel as = Parallel $
-        (\(f, a) -> f a) <$> concurrently fs as
