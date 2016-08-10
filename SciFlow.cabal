@@ -20,7 +20,7 @@ extra-source-files:
 
 Flag debug
   Description: Enable debug support
-  Default:     False
+  Default:     True
 
 Flag sge
   Description: Enable SGE support
