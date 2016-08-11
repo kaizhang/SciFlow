@@ -44,7 +44,7 @@ data CMD = Run GlobalOpts Int Bool
          | Delete GlobalOpts String
          | Recover GlobalOpts FilePath
          | DumpDB GlobalOpts FilePath
-         | Call String String String
+         | Call GlobalOpts String String String
 
 data GlobalOpts = GlobalOpts
     { dbPath :: FilePath }
@@ -69,11 +69,11 @@ runParser = Run
        <> help "Submit jobs to remote machines.")
 runExe initialize (Run opts n r) wf
 #ifdef SGE
-    | r = initialize $ withSGESession $ runWorkflow wf $ RunOpt (dbPath opts) n True
+    | r = initialize $ withSGESession $ runWorkflow wf $ RunOpt (dbPath opts) n True Normal
 #else
-    | r = initialize $ runWorkflow wf $ RunOpt (dbPath opts) n True
+    | r = initialize $ runWorkflow wf $ RunOpt (dbPath opts) n True Normal
 #endif
-    | otherwise = runWorkflow wf $ RunOpt (dbPath opts) n False
+    | otherwise = runWorkflow wf $ RunOpt (dbPath opts) n False Normal
 runExe _ _ _ = undefined
 {-# INLINE runExe #-}
 
@@ -87,13 +87,8 @@ catParser = Cat
         <$> globalParser
         <*> strArgument
             (metavar "NODE_ID")
-catExe (Cat opts pid) (Workflow _ ft _) = do
-    db <- openDB $ dbPath opts
-    case M.lookup pid ft of
-        Just (DynFunction fn) -> do
-            dat <- readData (T.pack pid) db `asTypeOf` fn undefined
-            B.putStr $ showYaml dat
-        Nothing -> return ()
+catExe (Cat opts pid) wf =
+    runWorkflow wf $ RunOpt (dbPath opts) 10 False $ ReadOnly (T.pack pid)
 catExe _ _ = undefined
 {-# INLINE catExe #-}
 
@@ -104,6 +99,7 @@ writeParser = Write
               (metavar "NODE_ID")
           <*> strArgument
               (metavar "INPUT_FILE")
+              {-
 writeExe (Write opts pid input) (Workflow _ ft _) = do
     db <- openDB $ dbPath opts
     c <- B.readFile input
@@ -112,6 +108,7 @@ writeExe (Write opts pid input) (Workflow _ ft _) = do
             dat <- return (readYaml c) `asTypeOf` fn undefined
             updateData (T.pack pid) dat db
         Nothing -> return ()
+        -}
 writeExe _ _ = undefined
 {-# INLINE writeExe #-}
 
@@ -131,6 +128,7 @@ recoverParser = Recover
             <$> globalParser
             <*> strArgument
                 (metavar "BACKUP")
+                {-
 recoverExe (Recover opts dir) (Workflow _ ft _) = do
     fls <- shelly $ lsT $ fromText $ T.pack dir
     shelly $ rm_f $ fromText $ T.pack $ dbPath opts
@@ -144,6 +142,7 @@ recoverExe (Recover opts dir) (Workflow _ ft _) = do
                 dat <- return (readYaml c) `asTypeOf` fn undefined
                 saveData pid dat db
             Nothing -> printf "Cannot identify node: %s. Skipped.\n" pid
+            -}
 recoverExe _ _ = undefined
 {-# INLINE recoverExe #-}
 
@@ -152,6 +151,7 @@ dumpDBParser = DumpDB
            <$> globalParser
            <*> strArgument
                (metavar "OUTPUT_DIR")
+               {-
 dumpDBExe (DumpDB opts dir) (Workflow _ ft _) = do
     shelly $ mkdir_p $ fromText $ T.pack dir
     db <- openDB $ dbPath opts
@@ -164,20 +164,18 @@ dumpDBExe (DumpDB opts dir) (Workflow _ ft _) = do
                 dat <- readData pid db `asTypeOf` fn undefined
                 B.writeFile fl $ showYaml dat
             Nothing -> return ()
+            -}
 dumpDBExe _ _ = undefined
 {-# INLINE dumpDBExe #-}
 
 callParser :: Parser CMD
 callParser = Call
-         <$> strArgument mempty
+         <$> globalParser
          <*> strArgument mempty
          <*> strArgument mempty
-callExe (Call pid inputFl outputFl) (Workflow _ ft _) = case M.lookup pid ft of
-    Just (DynFunction fn) -> do
-        input <- deserialize <$> B.readFile inputFl
-        output <- serialize <$> fn input
-        B.writeFile outputFl output
-    Nothing -> undefined
+         <*> strArgument mempty
+callExe (Call opts pid inputFl outputFl) wf =
+    runWorkflow wf $ RunOpt (dbPath opts) 10 False $ ReadWrite (T.pack pid) inputFl outputFl
 callExe _ _ = undefined
 {-# INLINE callExe #-}
 
@@ -195,7 +193,7 @@ mainFunc initialize dag wf h = execParser opts >>= execute
     execute cmd@(Delete _ _) = rmExe cmd
     execute cmd@(Recover _ _) = recoverExe cmd wf
     execute cmd@(DumpDB _ _) = dumpDBExe cmd wf
-    execute cmd@(Call _ _ _) = callExe cmd wf
+    execute cmd@(Call _ _ _ _) = callExe cmd wf
 
     opts = info (helper <*> parser) $ fullDesc <> header h
     parser = subparser $ (

@@ -24,8 +24,9 @@ import qualified Data.Text           as T
 import Data.Graph.Inductive.Graph ( mkGraph, lab, labNodes, outdeg
                                   , lpre, labnfilter, nfilter, gmap, suc )
 import Data.Graph.Inductive.PatriciaTree (Gr)
-import Data.List (sortBy)
+import Data.List (sortBy, foldl')
 import Data.Maybe (fromJust, fromMaybe)
+import qualified Data.ByteString as B
 import Data.Ord (comparing)
 import qualified Data.Map as M
 import Text.Printf (printf)
@@ -152,61 +153,34 @@ trimDAG st dag = gmap revise gr
 mkWorkflow :: String   -- name
            -> DAG -> Q [Dec]
 mkWorkflow workflowName dag = do
-    let (expq, funcExp) = runState (connect sinks [| const $ return () |]) $
-            flip map sinks $ \(_, (p, (fn, _))) -> [| (T.unpack p, DynFunction $fn) |]
+    let expq = connect sinks [| const $ return () |]
     -- define the workflow
     workflows <-
-        [d| $(varP $ mkName workflowName) = Workflow pids
-                $(varE $ mkName functionTableName) $expq |]
+        [d| $(varP $ mkName workflowName) = Workflow pids $expq |]
 
-    -- function table
-    -- TODO make sure the inferred types are equal for the same node
-    funcTable <-
-        [d| $(varP $ mkName functionTableName) = M.fromList $(listE funcExp) |]
-
-    return $ workflows ++ funcTable
+    return workflows
   where
-    functionTableName = workflowName ++ "_function_table"
     computeNodes = snd $ unzip $ labNodes dag
     pids = M.fromList $ map (\(i, x) -> (i, snd x)) computeNodes
     sinks = labNodes $ nfilter ((==0) . outdeg dag) dag
 
-    backTrack (i, (p, (fn, _))) = do
-        case parents of
-            [] -> return ()
-            [((_, (p', (fn', _))), _)] -> modify $ (:)
-                [| (T.unpack p', DynFunction $ inferType $fn' $fn) |]
-            xs -> modify $ (++) ( flip map xs $ \((_, (p', (fn', _))), o) ->
-                [| (T.unpack p', DynFunction $ $(inferTypeN o n) $fn' $fn) |] )
-        connect (fst $ unzip parents) [| mkProc p $fn |]
+    backTrack (i, (p, (fn, _))) = connect (fst $ unzip parents) [| mkProc p $fn |]
       where
         parents = map ( \(x, o) -> ((x, fromJust $ lab dag x), o) ) $
             sortBy (comparing snd) $ lpre dag i
-        n = length parents
 
-    connect [] sink = return $ sink
-    connect [source] sink = do
-        expq <- backTrack source
-        return [| $expq >=> $sink |]
-    connect sources sink = do
-        expq <- foldM g e0 $ sources
-        return [| fmap runParallel $expq >=> $sink |]
+    connect [] sink = sink
+    connect [source] sink = [| $expq >=> $sink |]
       where
+        expq = backTrack source
+    connect sources sink = [| fmap runParallel $expq >=> $sink |]
+      where
+        expq = foldl' g e0 $ sources
         e0 = [| (pure. pure) $(conE (tupleDataName $ length sources)) |]
-        g acc x = do
-            expq <- backTrack x
-            return [| ((<*>) . fmap (<*>)) $acc $ fmap Parallel $expq |]
+        g acc x =
+            let expq = backTrack x
+            in [| ((<*>) . fmap (<*>)) $acc $ fmap Parallel $expq |]
 {-# INLINE mkWorkflow #-}
-
-inferType :: (a -> IO b) -> (b -> IO c) -> (a -> IO b)
-inferType f g = let _ = f >=> g in f
-
-inferTypeN :: Int -> Int -> ExpQ
-inferTypeN i n = [|
-    let f' x = return $(tupE $ replicate i [|undefined|] ++ [[|x|]] ++
-            replicate (n-i-1) [|undefined|])
-    in \f g -> let _ = f >=> f' >=> g in f
-    |]
 
 mkProc :: (BatchData' (IsList a b) a b, BatchData a b, DBData a, DBData b)
        => PID -> (a -> IO b) -> (Processor a b)
@@ -254,4 +228,16 @@ mkProc pid f = \input -> do
                     putMVar pSt Success
                     _ <- forkIO $ putMVar (wfState^.procParaControl) ()
                     return r
+        Skip -> liftIO $ putMVar pSt pStValue >> return undefined
+        RW input output -> liftIO $ do
+            c <- B.readFile input
+            r <- f $ deserialize c
+            B.writeFile output $ serialize r
+            putMVar pSt Skip
+            return undefined
+        Read -> liftIO $ do
+            r <- readData pid $ wfState^.db
+            B.putStr $ showYaml r
+            putMVar pSt Skip
+            return r
 {-# INLINE mkProc #-}

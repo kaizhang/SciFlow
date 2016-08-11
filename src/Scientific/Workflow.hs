@@ -19,11 +19,19 @@ import           Scientific.Workflow.Utils
 import           Text.Printf                 (printf)
 
 runWorkflow :: Workflow -> RunOpt -> IO ()
-runWorkflow (Workflow pids _ wf) opts = bracket (openDB $ database opts) closeDB $ \db -> do
+runWorkflow (Workflow pids wf) opts = bracket (openDB $ database opts) closeDB $ \db -> do
     ks <- S.fromList <$> getKeys db
-    pidStateMap <- flip M.traverseWithKey pids $ \pid attr -> do
-        v <- if pid `S.member` ks then newMVar Success else newMVar Scheduled
-        return (v, attr)
+    pidStateMap <- flip M.traverseWithKey pids $ \pid attr -> case runMode opts of
+        Normal -> do
+            v <- if pid `S.member` ks then newMVar Success else newMVar Scheduled
+            return (v, attr)
+        ReadWrite i input output -> do
+            v <- if pid == i then newMVar (RW input output) else newMVar Skip
+            return (v, attr)
+        ReadOnly i -> do
+            v <- if pid == i then newMVar Read else newMVar Skip
+            return (v, attr)
+
     para <- newEmptyMVar
     _ <- forkIO $ replicateM_ (nThread opts) $ putMVar para ()
     let initState = WorkflowState db pidStateMap para $ runOnRemote opts

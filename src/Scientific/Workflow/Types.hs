@@ -10,7 +10,6 @@
 module Scientific.Workflow.Types
     ( WorkflowDB(..)
     , Workflow(..)
-    , DynFunction(..)
     , PID
     , NodeResult(..)
     , ProcState
@@ -20,6 +19,7 @@ module Scientific.Workflow.Types
     , procParaControl
     , remote
     , Processor
+    , RunMode(..)
     , RunOpt(..)
     , BatchData(..)
     , BatchData'(..)
@@ -133,6 +133,9 @@ type AttributeSetter = State Attribute ()
 data NodeResult = Success
                 | Fail SomeException
                 | Scheduled
+                | Skip
+                | RW FilePath FilePath
+                | Read
 
 data WorkflowState = WorkflowState
     { _db              :: WorkflowDB
@@ -146,13 +149,8 @@ makeLenses ''WorkflowState
 type ProcState b = StateT WorkflowState (ExceptT (PID, SomeException) IO) b
 type Processor a b = a -> ProcState b
 
--- | Functions with dynamic types.
-data DynFunction where
-    DynFunction :: (DBData a, DBData b) => (a -> IO b) -> DynFunction
-
 -- | A Workflow is a stateful function
 data Workflow = Workflow (M.Map T.Text Attribute)
-                         (M.Map String DynFunction)
                          (Processor () ())
 
 -- | Options
@@ -160,7 +158,12 @@ data RunOpt = RunOpt
     { database    :: FilePath
     , nThread     :: Int      -- ^ number of concurrent processes
     , runOnRemote :: Bool
+    , runMode :: RunMode
     }
+
+data RunMode = Normal
+             | ReadWrite PID FilePath FilePath
+             | ReadOnly PID
 
 
 -- | Auxiliary type for concurrency support.
