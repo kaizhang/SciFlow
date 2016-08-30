@@ -243,7 +243,7 @@ mkProc pid f = \input -> do
         Replace input -> liftIO $ do
             c <- B.readFile input
             r <- return (readYaml c) `asTypeOf` f undefined
-            saveData pid r $ wfState^.db
+            updateData pid r $ wfState^.db
             putMVar pSt Skip
             return r
 {-# INLINE mkProc #-}
