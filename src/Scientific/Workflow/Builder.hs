@@ -229,7 +229,7 @@ mkProc pid f = \input -> do
                     _ <- forkIO $ putMVar (wfState^.procParaControl) ()
                     return r
         Skip -> liftIO $ putMVar pSt pStValue >> return undefined
-        RW input output -> liftIO $ do
+        EXE input output -> liftIO $ do
             c <- B.readFile input
             r <- f $ deserialize c
             B.writeFile output $ serialize r
@@ -238,6 +238,12 @@ mkProc pid f = \input -> do
         Read -> liftIO $ do
             r <- readData pid $ wfState^.db
             B.putStr $ showYaml r
+            putMVar pSt Skip
+            return r
+        Replace input -> liftIO $ do
+            c <- B.readFile input
+            r <- return (readYaml c) `asTypeOf` f undefined
+            saveData pid r $ wfState^.db
             putMVar pSt Skip
             return r
 {-# INLINE mkProc #-}

@@ -25,11 +25,14 @@ runWorkflow (Workflow pids wf) opts = bracket (openDB $ database opts) closeDB $
         Normal -> do
             v <- if pid `S.member` ks then newMVar Success else newMVar Scheduled
             return (v, attr)
-        ReadWrite i input output -> do
-            v <- if pid == i then newMVar (RW input output) else newMVar Skip
+        ExecSingle i input output -> do
+            v <- if pid == i then newMVar (EXE input output) else newMVar Skip
             return (v, attr)
-        ReadOnly i -> do
+        ReadSingle i -> do
             v <- if pid == i then newMVar Read else newMVar Skip
+            return (v, attr)
+        WriteSingle i input -> do
+            v <- if pid == i then newMVar (Replace input) else newMVar Skip
             return (v, attr)
 
     para <- newEmptyMVar

@@ -88,7 +88,7 @@ catParser = Cat
         <*> strArgument
             (metavar "NODE_ID")
 catExe (Cat opts pid) wf =
-    runWorkflow wf $ RunOpt (dbPath opts) 10 False $ ReadOnly (T.pack pid)
+    runWorkflow wf $ RunOpt (dbPath opts) 10 False $ ReadSingle (T.pack pid)
 catExe _ _ = undefined
 {-# INLINE catExe #-}
 
@@ -99,16 +99,8 @@ writeParser = Write
               (metavar "NODE_ID")
           <*> strArgument
               (metavar "INPUT_FILE")
-              {-
-writeExe (Write opts pid input) (Workflow _ ft _) = do
-    db <- openDB $ dbPath opts
-    c <- B.readFile input
-    case M.lookup pid ft of
-        Just (DynFunction fn) -> do
-            dat <- return (readYaml c) `asTypeOf` fn undefined
-            updateData (T.pack pid) dat db
-        Nothing -> return ()
-        -}
+writeExe (Write opts pid input) wf =
+    runWorkflow wf $ RunOpt (dbPath opts) 10 False $ WriteSingle (T.pack pid) input
 writeExe _ _ = undefined
 {-# INLINE writeExe #-}
 
@@ -175,7 +167,7 @@ callParser = Call
          <*> strArgument mempty
          <*> strArgument mempty
 callExe (Call opts pid inputFl outputFl) wf =
-    runWorkflow wf $ RunOpt (dbPath opts) 10 False $ ReadWrite (T.pack pid) inputFl outputFl
+    runWorkflow wf $ RunOpt (dbPath opts) 10 False $ ExecSingle (T.pack pid) inputFl outputFl
 callExe _ _ = undefined
 {-# INLINE callExe #-}
 

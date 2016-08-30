@@ -130,12 +130,16 @@ defaultAttribute = Attribute
 type AttributeSetter = State Attribute ()
 
 -- | The result of a computation node
-data NodeResult = Success
-                | Fail SomeException
-                | Scheduled
-                | Skip
-                | RW FilePath FilePath
-                | Read
+data NodeResult = Success                -- ^ The node has been executed
+                | Fail SomeException     -- ^ The node failed to finish
+                | Scheduled              -- ^ The node will be executed
+                | Skip                   -- ^ The node will not be executed
+                | Read                   -- ^ Simply read the saved data from database
+                | Replace FilePath         -- ^ Read the result from the input file
+                                         -- and save it to database.
+                | EXE FilePath FilePath  -- ^ Read input from the input file and
+                                         -- save results to the output file. This is
+                                         -- used in remote mode.
 
 data WorkflowState = WorkflowState
     { _db              :: WorkflowDB
@@ -162,9 +166,9 @@ data RunOpt = RunOpt
     }
 
 data RunMode = Normal
-             | ReadWrite PID FilePath FilePath
-             | ReadOnly PID
-
+             | ExecSingle PID FilePath FilePath
+             | ReadSingle PID
+             | WriteSingle PID FilePath
 
 -- | Auxiliary type for concurrency support.
 newtype Parallel a = Parallel { runParallel :: ProcState a}
