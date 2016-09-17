@@ -1,5 +1,5 @@
 name:                SciFlow
-version:             0.5.3
+version:             0.5.3.1
 synopsis:            Scientific workflow management system
 description:
   SciFlow is to help programmers design complex workflows
@@ -53,6 +53,7 @@ library
     , containers
     , cereal
     , directory
+    , exceptions
     , executable-path
     , fgl
     , graphviz

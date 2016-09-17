@@ -18,6 +18,11 @@ module Scientific.Workflow.Types
     , procStatus
     , procParaControl
     , remote
+    , config
+    , getConfig
+    , getConfigMaybe
+    , getConfig'
+    , getConfigMaybe'
     , Processor
     , RunMode(..)
     , RunOpt(..)
@@ -32,6 +37,7 @@ module Scientific.Workflow.Types
     , note
     , batch
     , submitToRemote
+    , stateful
 
     , Parallel(..)
 
@@ -45,8 +51,8 @@ module Scientific.Workflow.Types
 import           Control.Concurrent.Async.Lifted   (concurrently)
 import           Control.Concurrent.MVar           (MVar)
 import           Control.Exception                 (SomeException)
-import           Control.Lens                      (makeLenses)
-import           Control.Monad.State               (State, StateT)
+import           Control.Lens                      (at, makeLenses, (^.))
+import           Control.Monad.State               (State, StateT, get)
 import           Control.Monad.Trans.Except        (ExceptT)
 import qualified Data.ByteString                   as B
 import           Data.Graph.Inductive.Graph        (labEdges, labNodes, mkGraph)
@@ -61,30 +67,6 @@ import           Data.Yaml                         (FromJSON, ToJSON, decode,
 import           Database.SQLite.Simple            (Connection)
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift          as T
-
-data HTrue
-data HFalse
-
-type family IsList a b where
-    IsList [a] [b] = HTrue
-    IsList a b = HFalse
-
-class BatchData' flag a b where
-    batchFunction' :: flag -> (a -> IO b) -> Int -> (a -> [a], [b] -> b)
-
-instance BatchData' HTrue [a] [b] where
-    batchFunction' _ _ i = (chunksOf i, concat)
-
-instance BatchData' HFalse a b where
-    batchFunction' _ _ _ = (return, head)
-
--- | 'BatchData' represents inputs that can be divided into batches and processed
--- in parallel, i.e. list.
-class BatchData a b where
-    batchFunction :: (a -> IO b) -> Int -> (a -> [a], [b] -> b)
-
-instance (IsList a b ~ flag, BatchData' flag a b) => BatchData a b where
-    batchFunction = batchFunction' (undefined :: flag)
 
 -- | 'DBData' type class is used for data serialization.
 class DBData a where
@@ -115,6 +97,7 @@ data Attribute = Attribute
     , _batch          :: Int         -- ^ Batch size. If > 0, inputs will be divided
                                      -- into batches.
     , _submitToRemote :: Maybe Bool  -- ^ Overwrite the global option
+    , _stateful       :: Bool        -- ^ Whether the node function has access to internal states
     }
 
 makeLenses ''Attribute
@@ -125,6 +108,7 @@ defaultAttribute = Attribute
     , _note = ""
     , _batch = -1
     , _submitToRemote = Nothing
+    , _stateful = False
     }
 
 type AttributeSetter = State Attribute ()
@@ -144,8 +128,11 @@ data NodeResult = Success                -- ^ The node has been executed
 data WorkflowState = WorkflowState
     { _db              :: WorkflowDB
     , _procStatus      :: M.Map PID (MVar NodeResult, Attribute)
-    , _procParaControl :: MVar () -- ^ concurrency controller
-    , _remote          :: Bool
+    , _procParaControl :: MVar () -- ^ Concurrency controller
+    , _remote          :: Bool    -- ^ Global remote switch
+    , _config          :: M.Map T.Text T.Text    -- ^ Workflow configuration. This
+                                                 -- is used to store environmental
+                                                 -- variables.
     }
 
 makeLenses ''WorkflowState
@@ -153,16 +140,31 @@ makeLenses ''WorkflowState
 type ProcState b = StateT WorkflowState (ExceptT (PID, SomeException) IO) b
 type Processor a b = a -> ProcState b
 
+getConfigMaybe :: T.Text -> ProcState (Maybe T.Text)
+getConfigMaybe key = do
+    st <- get
+    return $ (st^.config) ^.at key
+
+getConfig :: T.Text -> ProcState T.Text
+getConfig = fmap fromJust . getConfigMaybe
+
+getConfig' :: T.Text -> ProcState String
+getConfig' = fmap T.unpack . getConfig
+
+getConfigMaybe' :: T.Text -> ProcState (Maybe String)
+getConfigMaybe' = (fmap.fmap) T.unpack . getConfigMaybe
+
 -- | A Workflow is a stateful function
 data Workflow = Workflow (M.Map T.Text Attribute)
                          (Processor () ())
 
 -- | Options
 data RunOpt = RunOpt
-    { database    :: FilePath
-    , nThread     :: Int      -- ^ number of concurrent processes
-    , runOnRemote :: Bool
-    , runMode :: RunMode
+    { database      :: FilePath
+    , nThread       :: Int      -- ^ number of concurrent processes
+    , runOnRemote   :: Bool
+    , runMode       :: RunMode
+    , configuration :: Maybe FilePath
     }
 
 data RunMode = Normal
@@ -202,3 +204,29 @@ type Node = (PID, (ExpQ, Attribute))
 type Edge = (PID, PID, EdgeOrd)
 
 type Builder = State ([Node], [Edge])
+
+
+
+data HTrue
+data HFalse
+
+type family IsList a b where
+    IsList [a] [b] = HTrue
+    IsList a b = HFalse
+
+class BatchData' flag a b where
+    batchFunction' :: flag -> (a -> ProcState b) -> Int -> (a -> [a], [b] -> b)
+
+instance BatchData' HTrue [a] [b] where
+    batchFunction' _ _ i = (chunksOf i, concat)
+
+instance BatchData' HFalse a b where
+    batchFunction' _ _ _ = (return, head)
+
+-- | 'BatchData' represents inputs that can be divided into batches and processed
+-- in parallel, i.e. list.
+class BatchData a b where
+    batchFunction :: (a -> ProcState b) -> Int -> (a -> [a], [b] -> b)
+
+instance (IsList a b ~ flag, BatchData' flag a b) => BatchData a b where
+    batchFunction = batchFunction' (undefined :: flag)

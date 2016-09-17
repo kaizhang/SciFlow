@@ -15,9 +15,8 @@ module Scientific.Workflow.Builder
     ) where
 
 import Control.Lens ((^.), (%~), _1, _2, _3)
-import Control.Exception (try)
 import Control.Monad.Trans.Except (throwE)
-import           Control.Monad.State (lift, liftIO, (>=>), foldM_, execState, modify, runState, foldM, State, get)
+import           Control.Monad.State (lift, liftIO, (>=>), foldM_, execState, modify, State, get)
 import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
 import qualified Data.Text           as T
@@ -32,10 +31,11 @@ import qualified Data.Map as M
 import Text.Printf (printf)
 import Control.Concurrent.Async.Lifted (mapConcurrently)
 import           Language.Haskell.TH
+import Control.Monad.Catch (try)
 
 import Scientific.Workflow.Types
 import Scientific.Workflow.DB
-import Scientific.Workflow.Utils (debug, runRemote, defaultRemoteOpts)
+import Scientific.Workflow.Utils (debug, runRemote, defaultRemoteOpts, RemoteOpts(..))
 
 
 -- | Declare a computational node. The function must have the signature:
@@ -164,7 +164,9 @@ mkWorkflow workflowName dag = do
     pids = M.fromList $ map (\(i, x) -> (i, snd x)) computeNodes
     sinks = labNodes $ nfilter ((==0) . outdeg dag) dag
 
-    backTrack (i, (p, (fn, _))) = connect (fst $ unzip parents) [| mkProc p $fn |]
+    backTrack (i, (p, (fn, attr)))
+        | attr^.stateful = connect (fst $ unzip parents) [| mkProc p $fn |]
+        | otherwise = connect (fst $ unzip parents) [| mkProc p (liftIO . $fn) |]
       where
         parents = map ( \(x, o) -> ((x, fromJust $ lab dag x), o) ) $
             sortBy (comparing snd) $ lpre dag i
@@ -183,7 +185,7 @@ mkWorkflow workflowName dag = do
 {-# INLINE mkWorkflow #-}
 
 mkProc :: (BatchData' (IsList a b) a b, BatchData a b, DBData a, DBData b)
-       => PID -> (a -> IO b) -> (Processor a b)
+       => PID -> (a -> ProcState b) -> (Processor a b)
 mkProc pid f = \input -> do
     wfState <- get
     let (pSt, attr) = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
@@ -207,15 +209,16 @@ mkProc pid f = \input -> do
 #endif
 
             let sendToRemote = fromMaybe (wfState^.remote) (attr^.submitToRemote)
-            result <- liftIO $ try $ case () of
+                remoteOpts = defaultRemoteOpts{environment=wfState^.config}
+            result <- try $ case () of
                 _ | attr^.batch > 0 -> do
                     let (mkBatch, combineResult) = batchFunction f $ attr^.batch
                         input' = mkBatch input
                     combineResult <$> if sendToRemote
-                        then mapConcurrently (runRemote defaultRemoteOpts pid) input'
+                        then liftIO $ mapConcurrently (runRemote remoteOpts pid) input'
                         else mapM f input'
                   | otherwise -> if sendToRemote
-                      then runRemote defaultRemoteOpts pid input
+                      then liftIO $ runRemote remoteOpts pid input
                       else f input
             case result of
                 Left ex -> do
@@ -229,21 +232,21 @@ mkProc pid f = \input -> do
                     _ <- forkIO $ putMVar (wfState^.procParaControl) ()
                     return r
         Skip -> liftIO $ putMVar pSt pStValue >> return undefined
-        EXE input output -> liftIO $ do
-            c <- B.readFile input
+        EXE input output -> do
+            c <- liftIO $ B.readFile input
             r <- f $ deserialize c
-            B.writeFile output $ serialize r
-            putMVar pSt Skip
+            liftIO $ B.writeFile output $ serialize r
+            liftIO $ putMVar pSt Skip
             return undefined
         Read -> liftIO $ do
             r <- readData pid $ wfState^.db
             B.putStr $ showYaml r
             putMVar pSt Skip
             return r
-        Replace input -> liftIO $ do
-            c <- B.readFile input
+        Replace input -> do
+            c <- liftIO $ B.readFile input
             r <- return (readYaml c) `asTypeOf` f undefined
-            updateData pid r $ wfState^.db
-            putMVar pSt Skip
+            liftIO $ updateData pid r $ wfState^.db
+            liftIO $ putMVar pSt Skip
             return r
 {-# INLINE mkProc #-}

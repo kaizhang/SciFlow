@@ -14,7 +14,6 @@ import qualified Data.GraphViz.Attributes.Complete as G
 import Data.Graph.Inductive.PatriciaTree (Gr)
 
 import Scientific.Workflow.Types
-import Scientific.Workflow.Builder
 
 -- | Print the computation graph
 renderBuilder :: Gr (PID, Attribute) Int -> TL.Text

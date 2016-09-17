@@ -11,6 +11,7 @@ import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import qualified Data.Map                    as M
 import qualified Data.Set                    as S
+import Data.Yaml (decodeFile)
 
 import           Scientific.Workflow.Builder
 import           Scientific.Workflow.DB
@@ -37,7 +38,17 @@ runWorkflow (Workflow pids wf) opts = bracket (openDB $ database opts) closeDB $
 
     para <- newEmptyMVar
     _ <- forkIO $ replicateM_ (nThread opts) $ putMVar para ()
-    let initState = WorkflowState db pidStateMap para $ runOnRemote opts
+
+    env <- case configuration opts of
+        Nothing -> return M.empty
+        Just fl -> do
+            r <- decodeFile fl
+            case r of
+                Nothing -> error "fail to parse configuration file"
+                Just x -> return x
+
+    let initState = WorkflowState db pidStateMap para (runOnRemote opts) env
+
     result <- runExceptT $ evalStateT (wf ()) initState
     case result of
         Right _ -> return ()

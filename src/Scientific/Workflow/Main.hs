@@ -1,7 +1,7 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
-{-# LANGUAGE CPP #-}
 
 module Scientific.Workflow.Main
     ( defaultMain
@@ -10,7 +10,6 @@ module Scientific.Workflow.Main
     , MainOpts(..)
     ) where
 
-import           Control.Monad                     (forM_)
 import qualified Data.ByteString.Char8             as B
 import           Data.Graph.Inductive.Graph        (nmap)
 import           Data.Graph.Inductive.PatriciaTree (Gr)
@@ -19,7 +18,7 @@ import qualified Data.Text                         as T
 import qualified Data.Text.Lazy.IO                 as T
 
 #ifdef SGE
-import DRMAA (withSGESession)
+import           DRMAA                             (withSGESession)
 #endif
 
 import           Language.Haskell.TH
@@ -47,7 +46,9 @@ data CMD = Run GlobalOpts Int Bool
          | Call GlobalOpts String String String
 
 data GlobalOpts = GlobalOpts
-    { dbPath :: FilePath }
+    { dbPath :: FilePath
+    , configFile :: Maybe FilePath
+    }
 
 globalParser :: Parser GlobalOpts
 globalParser = GlobalOpts
@@ -55,6 +56,10 @@ globalParser = GlobalOpts
                ( long "db-path"
               <> value "sciflow.db"
               <> metavar "DB_PATH" )
+           <*> (optional . strOption)
+               ( long "config"
+              <> metavar "CONFIG_PATH" )
+
 
 runParser :: Parser CMD
 runParser = Run
@@ -69,11 +74,14 @@ runParser = Run
        <> help "Submit jobs to remote machines.")
 runExe initialize (Run opts n r) wf
 #ifdef SGE
-    | r = initialize $ withSGESession $ runWorkflow wf $ RunOpt (dbPath opts) n True Normal
+    | r = initialize $ withSGESession $ runWorkflow wf $
+        RunOpt (dbPath opts) n True Normal $ configFile opts
 #else
-    | r = initialize $ runWorkflow wf $ RunOpt (dbPath opts) n True Normal
+    | r = initialize $ runWorkflow wf $
+        RunOpt (dbPath opts) n True Normal $ configFile opts
 #endif
-    | otherwise = runWorkflow wf $ RunOpt (dbPath opts) n False Normal
+    | otherwise = runWorkflow wf $
+        RunOpt (dbPath opts) n False Normal $ configFile opts
 runExe _ _ _ = undefined
 {-# INLINE runExe #-}
 
@@ -87,8 +95,8 @@ catParser = Cat
         <$> globalParser
         <*> strArgument
             (metavar "NODE_ID")
-catExe (Cat opts pid) wf =
-    runWorkflow wf $ RunOpt (dbPath opts) 10 False $ ReadSingle (T.pack pid)
+catExe (Cat opts pid) wf = runWorkflow wf $
+        RunOpt (dbPath opts) 10 False (ReadSingle $ T.pack pid) $ configFile opts
 catExe _ _ = undefined
 {-# INLINE catExe #-}
 
@@ -99,8 +107,8 @@ writeParser = Write
               (metavar "NODE_ID")
           <*> strArgument
               (metavar "INPUT_FILE")
-writeExe (Write opts pid input) wf =
-    runWorkflow wf $ RunOpt (dbPath opts) 10 False $ WriteSingle (T.pack pid) input
+writeExe (Write opts pid input) wf = runWorkflow wf $
+    RunOpt (dbPath opts) 10 False (WriteSingle (T.pack pid) input) $ configFile opts
 writeExe _ _ = undefined
 {-# INLINE writeExe #-}
 
@@ -166,8 +174,8 @@ callParser = Call
          <*> strArgument mempty
          <*> strArgument mempty
          <*> strArgument mempty
-callExe (Call opts pid inputFl outputFl) wf =
-    runWorkflow wf $ RunOpt (dbPath opts) 10 False $ ExecSingle (T.pack pid) inputFl outputFl
+callExe (Call opts pid inputFl outputFl) wf = runWorkflow wf $
+    RunOpt (dbPath opts) 10 False (ExecSingle (T.pack pid) inputFl outputFl) $ configFile opts
 callExe _ _ = undefined
 {-# INLINE callExe #-}
 
@@ -209,7 +217,7 @@ mainFunc initialize dag wf h = execParser opts >>= execute
 
 
 data MainOpts = MainOpts
-    { preAction :: Name    -- ^ An action to be execute before the workflow. The
+    { preAction     :: Name    -- ^ An action to be execute before the workflow. The
                            -- action should have type: IO () -> IO ().
                             -- ^ i.e., some initialization processes.
     , programHeader :: String

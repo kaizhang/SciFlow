@@ -6,6 +6,8 @@ import qualified Data.Text                     as T
 import           Debug.Trace                   (traceM)
 import           Rainbow
 import           System.IO
+import qualified Data.Map as M
+import Data.Yaml (encode)
 
 import           Scientific.Workflow.Types     (DBData (..))
 import           System.Directory              (getCurrentDirectory)
@@ -31,23 +33,28 @@ error' txt = B.hPutStrLn stderr $ B.concat $
 
 data RemoteOpts = RemoteOpts
     { extraParams :: String
+    , environment :: M.Map T.Text T.Text
     }
 
 defaultRemoteOpts :: RemoteOpts
 defaultRemoteOpts = RemoteOpts
     { extraParams = ""
+    , environment = M.empty
     }
 
 runRemote :: (DBData a, DBData b) => RemoteOpts -> T.Text -> a -> IO b
 #ifdef SGE
-runRemote opts pid input = withTmpFile tmpDir $ \inputFl -> withTmpFile tmpDir $
-    \outputFl -> do
+runRemote opts pid input = withTmpFile tmpDir $ \inputFl ->
+    withTmpFile tmpDir $ \outputFl -> withTmpFile tmpDir $ \configFl -> do
+        B.writeFile configFl $ encode $ environment opts
+
         exePath <- getExecutablePath
         wd <- getCurrentDirectory
         let config = defaultDrmaaConfig{drmaa_wd=wd, drmaa_native=extraParams opts}
 
         B.writeFile inputFl $ serialize input
-        drmaaRun exePath ["execFunc", T.unpack pid, inputFl, outputFl] config :: IO ()
+        drmaaRun exePath [ "execFunc", "--config", configFl, T.unpack pid
+            , inputFl, outputFl ] config :: IO ()
         deserialize <$> B.readFile outputFl
   where
     tmpDir = "./"
