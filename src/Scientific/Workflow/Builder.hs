@@ -37,7 +37,6 @@ import Scientific.Workflow.Types
 import Scientific.Workflow.DB
 import Scientific.Workflow.Utils (debug, runRemote, defaultRemoteOpts, RemoteOpts(..))
 
-
 -- | Declare a computational node. The function must have the signature:
 -- (DBData a, DBData b) => a -> IO b
 node :: ToExpQ q
@@ -50,14 +49,6 @@ node p fn setAttr = modify $ _1 %~ (newNode:)
     attr = execState setAttr defaultAttribute
     newNode = (p, (toExpQ fn, attr))
 {-# INLINE node #-}
-
-
-{-
- Declare a function that can be called on remote
-function :: ToExpQ q => T.Text -> q -> Builder ()
-function funcName fn =
--}
-
 
 -- | many-to-one generalized link function
 link :: [PID] -> PID -> Builder ()
@@ -209,14 +200,17 @@ mkProc pid f = \input -> do
 #endif
 
             let sendToRemote = fromMaybe (wfState^.remote) (attr^.submitToRemote)
-                remoteOpts = defaultRemoteOpts{environment=wfState^.config}
+                remoteOpts = defaultRemoteOpts
+                    { extraParams = attr^.remoteParam
+                    , environment = wfState^.config
+                    }
             result <- try $ case () of
                 _ | attr^.batch > 0 -> do
                     let (mkBatch, combineResult) = batchFunction f $ attr^.batch
                         input' = mkBatch input
                     combineResult <$> if sendToRemote
                         then liftIO $ mapConcurrently (runRemote remoteOpts pid) input'
-                        else mapM f input'
+                        else mapM f input'  -- do not run in parallel in local machine
                   | otherwise -> if sendToRemote
                       then liftIO $ runRemote remoteOpts pid input
                       else f input

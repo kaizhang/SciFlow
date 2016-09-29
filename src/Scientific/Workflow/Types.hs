@@ -38,6 +38,7 @@ module Scientific.Workflow.Types
     , batch
     , submitToRemote
     , stateful
+    , remoteParam
 
     , Parallel(..)
 
@@ -97,7 +98,9 @@ data Attribute = Attribute
     , _batch          :: Int         -- ^ Batch size. If > 0, inputs will be divided
                                      -- into batches.
     , _submitToRemote :: Maybe Bool  -- ^ Overwrite the global option
-    , _stateful       :: Bool        -- ^ Whether the node function has access to internal states
+    , _stateful       :: Bool        -- ^ Whether the node function has access
+                                     -- to internal states
+    , _remoteParam    :: String
     }
 
 makeLenses ''Attribute
@@ -109,6 +112,7 @@ defaultAttribute = Attribute
     , _batch = -1
     , _submitToRemote = Nothing
     , _stateful = False
+    , _remoteParam = ""
     }
 
 type AttributeSetter = State Attribute ()
