@@ -60,7 +60,7 @@ import           Data.Graph.Inductive.Graph        (labEdges, labNodes, mkGraph)
 import           Data.Graph.Inductive.PatriciaTree (Gr)
 import           Data.List.Split                   (chunksOf)
 import qualified Data.Map                          as M
-import           Data.Maybe                        (fromJust)
+import           Data.Maybe                        (fromJust, fromMaybe)
 import qualified Data.Serialize                    as S
 import qualified Data.Text                         as T
 import           Data.Yaml                         (FromJSON, ToJSON, decode,
@@ -150,7 +150,9 @@ getConfigMaybe key = do
     return $ (st^.config) ^.at key
 
 getConfig :: T.Text -> ProcState T.Text
-getConfig = fmap fromJust . getConfigMaybe
+getConfig x = fmap (fromMaybe errMsg) $ getConfigMaybe x
+  where
+    errMsg = error $ "The Key " ++ show x ++ " doesn't exist!"
 
 getConfig' :: T.Text -> ProcState String
 getConfig' = fmap T.unpack . getConfig
