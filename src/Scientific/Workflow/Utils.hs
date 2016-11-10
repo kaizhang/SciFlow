@@ -1,13 +1,20 @@
 {-# LANGUAGE CPP #-}
-module Scientific.Workflow.Utils where
+module Scientific.Workflow.Utils
+    ( RemoteOpts(..)
+    , defaultRemoteOpts
+    , runRemote
+    , logMsg
+    , errorMsg
+    )where
 
 import qualified Data.ByteString.Char8         as B
+import qualified Data.Map                      as M
 import qualified Data.Text                     as T
-import           Debug.Trace                   (traceM)
+import           Data.Time                     (defaultTimeLocale, formatTime,
+                                                getZonedTime)
+import           Data.Yaml                     (encode)
 import           Rainbow
 import           System.IO
-import qualified Data.Map as M
-import Data.Yaml (encode)
 
 import           Scientific.Workflow.Types     (DBData (..))
 import           System.Directory              (getCurrentDirectory)
@@ -19,17 +26,27 @@ import           DRMAA                         (DrmaaAttribute (..),
                                                 withTmpFile)
 #endif
 
-debug :: Monad m => String -> m ()
-debug txt = traceM $ B.unpack $ B.concat $
-    chunksToByteStrings toByteStringsColors8 [prefix, chunk txt & fore green]
-  where
-    prefix = bold $ chunk "[DEBUG] " & fore green
+getTime :: IO String
+getTime = do
+    t <- getZonedTime
+    return $ formatTime defaultTimeLocale "[%m-%d-%H:%M]" t
+{-# INLINE getTime #-}
 
-error' :: String -> IO ()
-error' txt = B.hPutStrLn stderr $ B.concat $
-    chunksToByteStrings toByteStringsColors8 [prefix, chunk txt & fore red]
-  where
-    prefix = bold $ chunk "[ERROR] " & fore red
+logMsg :: String -> IO ()
+logMsg txt = do
+    t <- getTime
+    let prefix = bold $ chunk ("[LOG]" ++ t ++ " ") & fore green
+        msg = B.concat $ chunksToByteStrings toByteStringsColors8
+            [prefix, chunk txt & fore green]
+    B.hPutStrLn stderr msg
+
+errorMsg :: String -> IO ()
+errorMsg txt = do
+    t <- getTime
+    let prefix = bold $ chunk ("[ERROR]" ++ t ++ " ") & fore red
+        msg = B.concat $ chunksToByteStrings toByteStringsColors8
+            [prefix, chunk txt & fore red]
+    B.hPutStrLn stderr msg
 
 data RemoteOpts = RemoteOpts
     { extraParams :: String

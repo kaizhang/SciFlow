@@ -1,5 +1,5 @@
 name:                SciFlow
-version:             0.5.3.1
+version:             0.5.4-beta
 synopsis:            Scientific workflow management system
 description:
   SciFlow is to help programmers design complex workflows
@@ -9,7 +9,7 @@ license:             MIT
 license-file:        LICENSE
 author:              Kai Zhang
 maintainer:          kai@kzhang.org
-copyright:           (c) 2016 Kai Zhang
+copyright:           (c) 2015-2016 Kai Zhang
 category:            Control
 build-type:          Simple
 cabal-version:       >=1.10
@@ -17,10 +17,6 @@ cabal-version:       >=1.10
 extra-source-files:
   README.md
   example.png
-
-Flag debug
-  Description: Enable debug support
-  Default:     True
 
 Flag sge
   Description: Enable SGE support
@@ -39,9 +35,6 @@ library
 
   other-modules:
     Paths_SciFlow
-
-  if flag(debug)
-    CPP-Options: -DDEBUG
 
   if flag(sge)
     CPP-Options: -DSGE
@@ -66,6 +59,7 @@ library
     , sqlite-simple
     , split
     , th-lift
+    , time
     , text
     , template-haskell
     , transformers

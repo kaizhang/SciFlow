@@ -1,7 +1,6 @@
 flags:
     SciFlow:
-        debug: true
-        sge: true
+        sge: false
 
 packages:
     - '.'

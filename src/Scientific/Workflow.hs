@@ -52,5 +52,5 @@ runWorkflow (Workflow pids wf) opts = bracket (openDB $ database opts) closeDB $
     result <- runExceptT $ evalStateT (wf ()) initState
     case result of
         Right _ -> return ()
-        Left (pid, ex) -> error' $ printf "\"%s\" failed. The error was: %s"
+        Left (pid, ex) -> errorMsg $ printf "\"%s\" failed. The error was: %s."
             pid (displayException ex)

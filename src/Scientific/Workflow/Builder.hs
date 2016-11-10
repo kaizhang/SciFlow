@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE CPP #-}
 
 module Scientific.Workflow.Builder
     ( node
@@ -35,7 +34,7 @@ import Control.Monad.Catch (try)
 
 import Scientific.Workflow.Types
 import Scientific.Workflow.DB
-import Scientific.Workflow.Utils (debug, runRemote, defaultRemoteOpts, RemoteOpts(..))
+import Scientific.Workflow.Utils (logMsg, runRemote, defaultRemoteOpts, RemoteOpts(..))
 
 -- | Declare a computational node. The function must have the signature:
 -- (DBData a, DBData b) => a -> IO b
@@ -186,18 +185,11 @@ mkProc pid f = \input -> do
         (Fail ex) -> liftIO (putMVar pSt pStValue) >> lift (throwE (pid, ex))
         Success -> liftIO $ do
             putMVar pSt pStValue
-
-#ifdef DEBUG
-            debug $ printf "Recovering saved node: %s" pid
-#endif
-
             readData pid $ wfState^.db
         Scheduled -> do
             _ <- liftIO $ takeMVar $ wfState^.procParaControl
 
-#ifdef DEBUG
-            debug $ printf "Running node: %s" pid
-#endif
+            liftIO $ logMsg $ printf "%s: running..." pid
 
             let sendToRemote = fromMaybe (wfState^.remote) (attr^.submitToRemote)
                 remoteOpts = defaultRemoteOpts
@@ -219,11 +211,13 @@ mkProc pid f = \input -> do
                     _ <- liftIO $ do
                         putMVar pSt $ Fail ex
                         forkIO $ putMVar (wfState^.procParaControl) ()
+                        logMsg $ printf "%s: Failed!" pid
                     lift (throwE (pid, ex))
                 Right r -> liftIO $ do
                     saveData pid r $ wfState^.db
                     putMVar pSt Success
                     _ <- forkIO $ putMVar (wfState^.procParaControl) ()
+                    logMsg $ printf "%s: Finished." pid
                     return r
         Skip -> liftIO $ putMVar pSt pStValue >> return undefined
         EXE input output -> do
