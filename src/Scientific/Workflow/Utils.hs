@@ -29,7 +29,7 @@ import           DRMAA                         (DrmaaAttribute (..),
 getTime :: IO String
 getTime = do
     t <- getZonedTime
-    return $ formatTime defaultTimeLocale "[%m-%d-%H:%M]" t
+    return $ formatTime defaultTimeLocale "[%m-%d %H:%M]" t
 {-# INLINE getTime #-}
 
 logMsg :: String -> IO ()
