@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Scientific.Workflow.Builder
     ( node
@@ -11,6 +12,7 @@ module Scientific.Workflow.Builder
     , buildWorkflow
     , buildWorkflowPart
     , mkDAG
+    , ContextData(..)
     ) where
 
 import Control.Monad.Identity (runIdentity)
@@ -37,6 +39,8 @@ import Control.Monad.Catch (try)
 import Scientific.Workflow.Types
 import Scientific.Workflow.DB
 import Scientific.Workflow.Utils (warnMsg, logMsg, runRemote, defaultRemoteOpts, RemoteOpts(..))
+
+import Debug.Trace
 
 -- | Declare a computational node. The function must have the signature:
 -- (DBData a, DBData b) => a -> IO b
@@ -157,7 +161,13 @@ mkWorkflow workflowName dag = do
     sinks = labNodes $ nfilter ((==0) . outdeg dag) dag
 
     backTrack (i, (p, (fn, attr)))
-        | bSize > 0 = connect (fst $ unzip parents) [| mkProcListN bSize p $fn' |]
+        | bSize > 0 = do
+            e <- fn
+            if argIsContextData e
+                then connect (fst $ unzip parents)
+                        [| mkProcListNWithContext bSize p $fn' |]
+                else connect (fst $ unzip parents)
+                        [| mkProcListN bSize p $fn' |]
         | otherwise = connect (fst $ unzip parents) [| mkProc p $fn' |]
       where
         parents = map ( \(x, o) -> ((x, fromJust $ lab dag x), o) ) $
@@ -175,6 +185,13 @@ mkWorkflow workflowName dag = do
         g acc x = [| ((<*>) . fmap (<*>)) $acc $ fmap Parallel $(backTrack x) |]
 {-# INLINE mkWorkflow #-}
 
+-- | TODO: Need more work.
+argIsContextData :: Exp -> Bool
+argIsContextData e = case e of
+    LamE [ConP conName _] _ -> getName conName == "ContextData"
+    _ -> False
+  where
+    getName x = snd $ T.breakOnEnd "." $ T.pack $ show x
 
 mkProc :: (DBData a, DBData b)
        => PID -> (a -> ProcState b) -> (Processor a b)
@@ -186,6 +203,15 @@ mkProcListN :: (DBData [a], DBData [b])
 mkProcListN n pid f = mkProcWith (chunksOf n, concat) pid $
     (mapM :: (a -> ProcState b) -> [a] -> ProcState [b]) f
 {-# INLINE mkProcListN #-}
+
+mkProcListNWithContext :: (DBData (ContextData c [a]), DBData [b])
+                       => Int -> PID -> (ContextData c a -> ProcState b)
+                       -> (Processor (ContextData c [a]) [b])
+mkProcListNWithContext n pid f = mkProcWith (toChunks, concat) pid f'
+  where
+    f' (ContextData c xs) = mapM f $ zipWith ContextData (repeat c) xs
+    toChunks (ContextData c xs) = zipWith ContextData (repeat c) $ chunksOf n xs
+{-# INLINE mkProcListNWithContext #-}
 
 mkProcWith :: (Traversable t, DBData a, DBData b)
            => (a -> t a, t b -> b) -> PID -> (a -> ProcState b) -> (Processor a b)
@@ -213,18 +239,6 @@ mkProcWith (box, unbox) pid f = \input -> do
             result <- try $ unbox <$> if sendToRemote
                 then liftIO $ mapConcurrently (runRemote remoteOpts pid) input'
                 else mapM f input'  -- disable parallel in local machine due to memory issue
-            {-
-            result <- try $ case () of
-                _ | attr^.batch > 0 -> do
-                    let (mkBatch, combineResult) = batchFunction f $ attr^.batch
-                        input' = mkBatch input
-                    combineResult <$> if sendToRemote
-                        then liftIO $ mapConcurrently (runRemote remoteOpts pid) input'
-                        else mapM f input'  -- do not run in parallel in local machine
-                  | otherwise -> if sendToRemote
-                      then liftIO $ runRemote remoteOpts pid input
-                      else f input
-                      -}
             case result of
                 Left ex -> do
                     _ <- liftIO $ do

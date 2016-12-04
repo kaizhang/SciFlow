@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE UndecidableInstances  #-}
@@ -23,6 +24,7 @@ module Scientific.Workflow.Types
     , RunMode(..)
     , RunOpt(..)
     , DBData(..)
+    , ContextData(..)
     , Attribute(..)
     , AttributeSetter
     , defaultAttribute
@@ -55,11 +57,13 @@ import qualified Data.Map                          as M
 import           Data.Maybe                        (fromJust, fromMaybe)
 import qualified Data.Serialize                    as S
 import qualified Data.Text                         as T
-import           Data.Yaml                         (FromJSON, ToJSON, decode,
-                                                    encode)
+import           Data.Yaml                         (FromJSON(..), ToJSON(..), decode,
+                                                    encode,)
+import Data.Aeson.Types
 import           Database.SQLite.Simple            (Connection)
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift          as T
+import           GHC.Generics          (Generic)
 
 -- | 'DBData' type class is used for data serialization.
 class DBData a where
@@ -76,6 +80,20 @@ instance (FromJSON a, ToJSON a, S.Serialize a) => DBData a where
         fromEither _ = error "decode failed"
     showYaml = encode
     readYaml = fromJust . decode
+
+data ContextData context dat = ContextData
+    { _context :: context
+    , _data :: dat
+    } deriving (Generic)
+
+instance (FromJSON c, FromJSON d) => FromJSON (ContextData c d) where
+    parseJSON = genericParseJSON defaultOptions
+
+instance (ToJSON c, ToJSON d) => ToJSON (ContextData c d) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance (S.Serialize c, S.Serialize d) => S.Serialize (ContextData c d)
+
 
 -- | An abstract type representing the database used to store states of workflow
 newtype WorkflowDB  = WorkflowDB Connection
