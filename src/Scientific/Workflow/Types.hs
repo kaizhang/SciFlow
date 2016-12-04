@@ -1,10 +1,6 @@
 {-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
 module Scientific.Workflow.Types
@@ -26,9 +22,6 @@ module Scientific.Workflow.Types
     , Processor
     , RunMode(..)
     , RunOpt(..)
-    , BatchData(..)
-    , BatchData'(..)
-    , IsList
     , DBData(..)
     , Attribute(..)
     , AttributeSetter
@@ -58,7 +51,6 @@ import           Control.Monad.Trans.Except        (ExceptT)
 import qualified Data.ByteString                   as B
 import           Data.Graph.Inductive.Graph        (labEdges, labNodes, mkGraph)
 import           Data.Graph.Inductive.PatriciaTree (Gr)
-import           Data.List.Split                   (chunksOf)
 import qualified Data.Map                          as M
 import           Data.Maybe                        (fromJust, fromMaybe)
 import qualified Data.Serialize                    as S
@@ -210,29 +202,3 @@ type Node = (PID, (ExpQ, Attribute))
 type Edge = (PID, PID, EdgeOrd)
 
 type Builder = State ([Node], [Edge])
-
-
-
-data HTrue
-data HFalse
-
-type family IsList a b where
-    IsList [a] [b] = HTrue
-    IsList a b = HFalse
-
-class BatchData' flag a b where
-    batchFunction' :: flag -> (a -> ProcState b) -> Int -> (a -> [a], [b] -> b)
-
-instance BatchData' HTrue [a] [b] where
-    batchFunction' _ _ i = (chunksOf i, concat)
-
-instance BatchData' HFalse a b where
-    batchFunction' _ _ _ = (return, head)
-
--- | 'BatchData' represents inputs that can be divided into batches and processed
--- in parallel, i.e. list.
-class BatchData a b where
-    batchFunction :: (a -> ProcState b) -> Int -> (a -> [a], [b] -> b)
-
-instance (IsList a b ~ flag, BatchData' flag a b) => BatchData a b where
-    batchFunction = batchFunction' (undefined :: flag)

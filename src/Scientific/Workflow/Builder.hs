@@ -13,12 +13,14 @@ module Scientific.Workflow.Builder
     , mkDAG
     ) where
 
+import Control.Monad.Identity (runIdentity)
 import Control.Lens ((^.), (%~), _1, _2, _3)
 import Control.Monad.Trans.Except (throwE)
 import           Control.Monad.State (lift, liftIO, (>=>), foldM_, execState, modify, State, get)
 import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
 import qualified Data.Text           as T
+import Data.List.Split (chunksOf)
 import Data.Graph.Inductive.Graph ( mkGraph, lab, labNodes, outdeg
                                   , lpre, labnfilter, nfilter, gmap, suc )
 import Data.Graph.Inductive.PatriciaTree (Gr)
@@ -34,7 +36,7 @@ import Control.Monad.Catch (try)
 
 import Scientific.Workflow.Types
 import Scientific.Workflow.DB
-import Scientific.Workflow.Utils (logMsg, runRemote, defaultRemoteOpts, RemoteOpts(..))
+import Scientific.Workflow.Utils (warnMsg, logMsg, runRemote, defaultRemoteOpts, RemoteOpts(..))
 
 -- | Declare a computational node. The function must have the signature:
 -- (DBData a, DBData b) => a -> IO b
@@ -70,16 +72,16 @@ path ns = foldM_ f (head ns) $ tail ns
 -- the builder. These pieces will then be assembled to form a function that will
 -- execute each individual function in a correct order, named $name$.
 -- Lastly, a function table will be created with the name $name$_function_table.
-buildWorkflow :: String     -- ^ name
-              -> Builder ()
+buildWorkflow :: String     -- ^ Name of the workflow
+              -> Builder () -- ^ Builder
               -> Q [Dec]
 buildWorkflow prefix b = mkWorkflow prefix $ mkDAG b
 
 -- | Build only a part of the workflow that has not been executed. This is used
 -- during development for fast compliation.
-buildWorkflowPart :: FilePath   -- ^ path to the db
-                  -> String
-                  -> Builder ()
+buildWorkflowPart :: FilePath   -- ^ Path to the db
+                  -> String     -- ^ Name of the workflow
+                  -> Builder () -- ^ Builder
                   -> Q [Dec]
 buildWorkflowPart db wfName b = do
     st <- runIO $ getWorkflowState db
@@ -121,8 +123,8 @@ mkDAG b = mkGraph ns' es'
 trimDAG :: (M.Map T.Text NodeResult) -> DAG -> DAG
 trimDAG st dag = gmap revise gr
   where
-    revise context@(linkTo, _, lab, _)
-        | done (fst lab) && null linkTo = _3._2._1 %~ e $ context
+    revise context@(linkTo, _, nodeLabel, _)
+        | done (fst nodeLabel) && null linkTo = _3._2._1 %~ e $ context
         | otherwise = context
       where
         e x = [| (\() -> undefined) >=> $(x) |]
@@ -155,28 +157,39 @@ mkWorkflow workflowName dag = do
     sinks = labNodes $ nfilter ((==0) . outdeg dag) dag
 
     backTrack (i, (p, (fn, attr)))
-        | attr^.stateful = connect (fst $ unzip parents) [| mkProc p $fn |]
-        | otherwise = connect (fst $ unzip parents) [| mkProc p (liftIO . $fn) |]
+        | bSize > 0 = connect (fst $ unzip parents) [| mkProcListN bSize p $fn' |]
+        | otherwise = connect (fst $ unzip parents) [| mkProc p $fn' |]
       where
         parents = map ( \(x, o) -> ((x, fromJust $ lab dag x), o) ) $
             sortBy (comparing snd) $ lpre dag i
+        fn' | attr^.stateful = fn
+            | otherwise = [| liftIO . $fn |]
+        bSize = attr^.batch
 
     connect [] sink = sink
-    connect [source] sink = [| $expq >=> $sink |]
-      where
-        expq = backTrack source
+    connect [source] sink = [| $(backTrack source) >=> $sink |]
     connect sources sink = [| fmap runParallel $expq >=> $sink |]
       where
         expq = foldl' g e0 $ sources
         e0 = [| (pure. pure) $(conE (tupleDataName $ length sources)) |]
-        g acc x =
-            let expq = backTrack x
-            in [| ((<*>) . fmap (<*>)) $acc $ fmap Parallel $expq |]
+        g acc x = [| ((<*>) . fmap (<*>)) $acc $ fmap Parallel $(backTrack x) |]
 {-# INLINE mkWorkflow #-}
 
-mkProc :: (BatchData' (IsList a b) a b, BatchData a b, DBData a, DBData b)
+
+mkProc :: (DBData a, DBData b)
        => PID -> (a -> ProcState b) -> (Processor a b)
-mkProc pid f = \input -> do
+mkProc = mkProcWith (return, runIdentity)
+{-# INLINE mkProc #-}
+
+mkProcListN :: (DBData [a], DBData [b])
+            => Int -> PID -> (a -> ProcState b) -> (Processor [a] [b])
+mkProcListN n pid f = mkProcWith (chunksOf n, concat) pid $
+    (mapM :: (a -> ProcState b) -> [a] -> ProcState [b]) f
+{-# INLINE mkProcListN #-}
+
+mkProcWith :: (Traversable t, DBData a, DBData b)
+           => (a -> t a, t b -> b) -> PID -> (a -> ProcState b) -> (Processor a b)
+mkProcWith (box, unbox) pid f = \input -> do
     wfState <- get
     let (pSt, attr) = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
 
@@ -196,6 +209,11 @@ mkProc pid f = \input -> do
                     { extraParams = attr^.remoteParam
                     , environment = wfState^.config
                     }
+                input' = box input
+            result <- try $ unbox <$> if sendToRemote
+                then liftIO $ mapConcurrently (runRemote remoteOpts pid) input'
+                else mapM f input'  -- disable parallel in local machine due to memory issue
+            {-
             result <- try $ case () of
                 _ | attr^.batch > 0 -> do
                     let (mkBatch, combineResult) = batchFunction f $ attr^.batch
@@ -206,12 +224,13 @@ mkProc pid f = \input -> do
                   | otherwise -> if sendToRemote
                       then liftIO $ runRemote remoteOpts pid input
                       else f input
+                      -}
             case result of
                 Left ex -> do
                     _ <- liftIO $ do
                         putMVar pSt $ Fail ex
-                        forkIO $ putMVar (wfState^.procParaControl) ()
-                        logMsg $ printf "%s: Failed!" pid
+                        _ <- forkIO $ putMVar (wfState^.procParaControl) ()
+                        warnMsg $ printf "%s: Failed!" pid
                     lift (throwE (pid, ex))
                 Right r -> liftIO $ do
                     saveData pid r $ wfState^.db
@@ -220,21 +239,25 @@ mkProc pid f = \input -> do
                     logMsg $ printf "%s: Finished." pid
                     return r
         Skip -> liftIO $ putMVar pSt pStValue >> return undefined
-        EXE input output -> do
-            c <- liftIO $ B.readFile input
+        EXE inputData output -> do
+            c <- liftIO $ B.readFile inputData
             r <- f $ deserialize c
             liftIO $ B.writeFile output $ serialize r
             liftIO $ putMVar pSt Skip
             return undefined
+
+        -- Read data stored in this node
         Read -> liftIO $ do
             r <- readData pid $ wfState^.db
             B.putStr $ showYaml r
             putMVar pSt Skip
             return r
-        Replace input -> do
-            c <- liftIO $ B.readFile input
+
+        -- Replace data stored in this node
+        Replace inputData -> do
+            c <- liftIO $ B.readFile inputData
             r <- return (readYaml c) `asTypeOf` f undefined
             liftIO $ updateData pid r $ wfState^.db
             liftIO $ putMVar pSt Skip
             return r
-{-# INLINE mkProc #-}
+{-# INLINE mkProcWith #-}

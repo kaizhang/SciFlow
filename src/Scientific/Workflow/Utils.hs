@@ -5,6 +5,7 @@ module Scientific.Workflow.Utils
     , runRemote
     , logMsg
     , errorMsg
+    , warnMsg
     )where
 
 import qualified Data.ByteString.Char8         as B
@@ -44,6 +45,14 @@ errorMsg :: String -> IO ()
 errorMsg txt = do
     t <- getTime
     let prefix = bold $ chunk ("[ERROR]" ++ t ++ " ") & fore red
+        msg = B.concat $ chunksToByteStrings toByteStringsColors8
+            [prefix, chunk txt & fore red]
+    B.hPutStrLn stderr msg
+
+warnMsg :: String -> IO ()
+warnMsg txt = do
+    t <- getTime
+    let prefix = bold $ chunk ("[WARN]" ++ t ++ " ") & fore yellow
         msg = B.concat $ chunksToByteStrings toByteStringsColors8
             [prefix, chunk txt & fore red]
     B.hPutStrLn stderr msg
