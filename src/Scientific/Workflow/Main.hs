@@ -14,6 +14,7 @@ import qualified Data.ByteString.Char8             as B
 import           Data.Graph.Inductive.Graph        (nmap)
 import           Data.Graph.Inductive.PatriciaTree (Gr)
 import qualified Data.Map                          as M
+import           Data.Semigroup                    ((<>))
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy.IO                 as T
 
@@ -46,7 +47,7 @@ data CMD = Run GlobalOpts Int Bool
          | Call GlobalOpts String String String
 
 data GlobalOpts = GlobalOpts
-    { dbPath :: FilePath
+    { dbPath     :: FilePath
     , configFile :: Maybe FilePath
     }
 

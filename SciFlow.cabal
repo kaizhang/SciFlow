@@ -41,7 +41,7 @@ library
     build-depends: drmaa
 
   build-depends:
-      base >=4.0 && <5.0
+      base >=4.7 && <5.0
     , bytestring
     , aeson
     , containers
@@ -54,7 +54,7 @@ library
     , lens >=4.0
     , lifted-async
     , mtl
-    , optparse-applicative
+    , optparse-applicative >=0.13.0.0
     , rainbow
     , shelly
     , sqlite-simple
