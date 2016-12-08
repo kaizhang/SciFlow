@@ -76,13 +76,13 @@ runParser = Run
 runExe initialize (Run opts n r) wf
 #ifdef SGE
     | r = initialize $ withSGESession $ runWorkflow wf $
-        RunOpt (dbPath opts) n True Normal $ configFile opts
+        RunOpt (dbPath opts) n True Master $ configFile opts
 #else
     | r = initialize $ runWorkflow wf $
-        RunOpt (dbPath opts) n True Normal $ configFile opts
+        RunOpt (dbPath opts) n True Master $ configFile opts
 #endif
     | otherwise = runWorkflow wf $
-        RunOpt (dbPath opts) n False Normal $ configFile opts
+        RunOpt (dbPath opts) n False Master $ configFile opts
 runExe _ _ _ = undefined
 {-# INLINE runExe #-}
 
@@ -97,7 +97,7 @@ catParser = Cat
         <*> strArgument
             (metavar "NODE_ID")
 catExe (Cat opts pid) wf = runWorkflow wf $
-        RunOpt (dbPath opts) 10 False (ReadSingle $ T.pack pid) $ configFile opts
+        RunOpt (dbPath opts) 10 False (Review $ T.pack pid) $ configFile opts
 catExe _ _ = undefined
 {-# INLINE catExe #-}
 
@@ -109,7 +109,7 @@ writeParser = Write
           <*> strArgument
               (metavar "INPUT_FILE")
 writeExe (Write opts pid input) wf = runWorkflow wf $
-    RunOpt (dbPath opts) 10 False (WriteSingle (T.pack pid) input) $ configFile opts
+    RunOpt (dbPath opts) 10 False (Replace (T.pack pid) input) $ configFile opts
 writeExe _ _ = undefined
 {-# INLINE writeExe #-}
 
@@ -176,7 +176,7 @@ callParser = Call
          <*> strArgument mempty
          <*> strArgument mempty
 callExe (Call opts pid inputFl outputFl) wf = runWorkflow wf $
-    RunOpt (dbPath opts) 10 False (ExecSingle (T.pack pid) inputFl outputFl) $ configFile opts
+    RunOpt (dbPath opts) 10 False (Slave (T.pack pid) inputFl outputFl) $ configFile opts
 callExe _ _ = undefined
 {-# INLINE callExe #-}
 

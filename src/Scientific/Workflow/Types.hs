@@ -8,7 +8,7 @@ module Scientific.Workflow.Types
     ( WorkflowDB(..)
     , Workflow(..)
     , PID
-    , NodeResult(..)
+    , NodeState(..)
     , ProcState
     , WorkflowState(..)
     , db
@@ -128,20 +128,20 @@ defaultAttribute = Attribute
 type AttributeSetter = State Attribute ()
 
 -- | The result of a computation node
-data NodeResult = Success                -- ^ The node has been executed
-                | Fail SomeException     -- ^ The node failed to finish
-                | Scheduled              -- ^ The node will be executed
-                | Skip                   -- ^ The node will not be executed
-                | Read                   -- ^ Simply read the saved data from database
-                | Replace FilePath         -- ^ Read the result from the input file
-                                         -- and save it to database.
-                | EXE FilePath FilePath  -- ^ Read input from the input file and
-                                         -- save results to the output file. This is
-                                         -- used in remote mode.
+data NodeState = Success                -- ^ The node has been executed
+               | Fail SomeException     -- ^ The node failed to finish
+               | Scheduled              -- ^ The node will be executed
+               | Skip                   -- ^ The node will not be executed
+               | Get                    -- ^ Simply read the saved data from database
+               | Put FilePath           -- ^ Read the result from the input file
+                                        -- and save it to database.
+               | EXE FilePath FilePath  -- ^ Read input from the input file and
+                                        -- save results to the output file. This is
+                                        -- used in remote mode.
 
 data WorkflowState = WorkflowState
     { _db              :: WorkflowDB
-    , _procStatus      :: M.Map PID (MVar NodeResult, Attribute)
+    , _procStatus      :: M.Map PID (MVar NodeState, Attribute)
     , _procParaControl :: MVar () -- ^ Concurrency controller
     , _remote          :: Bool    -- ^ Global remote switch
     , _config          :: M.Map T.Text T.Text    -- ^ Workflow configuration. This
@@ -183,21 +183,10 @@ data RunOpt = RunOpt
     , configuration :: Maybe FilePath
     }
 
-data RunMode = Normal
-             | ExecSingle PID FilePath FilePath
-             | ReadSingle PID
-             | WriteSingle PID FilePath
-
--- | Auxiliary type for concurrency support.
-newtype Parallel a = Parallel { runParallel :: ProcState a}
-
-instance Functor Parallel where
-    fmap f (Parallel a) = Parallel $ f <$> a
-
-instance Applicative Parallel where
-    pure = Parallel . pure
-    Parallel fs <*> Parallel as = Parallel $
-        (\(f, a) -> f a) <$> concurrently fs as
+data RunMode = Master                       -- ^ Run as the master process
+             | Slave PID FilePath FilePath  -- ^ Run as a slave process
+             | Review PID                   -- ^ Review the info stored in a node
+             | Replace PID FilePath         -- ^ Replace the info stored in a node
 
 
 T.deriveLift ''M.Map
@@ -220,3 +209,15 @@ type Node = (PID, (ExpQ, Attribute))
 type Edge = (PID, PID, EdgeOrd)
 
 type Builder = State ([Node], [Edge])
+
+
+-- | Auxiliary type for concurrency support.
+newtype Parallel a = Parallel { runParallel :: ProcState a}
+
+instance Functor Parallel where
+    fmap f (Parallel a) = Parallel $ f <$> a
+
+instance Applicative Parallel where
+    pure = Parallel . pure
+    Parallel fs <*> Parallel as = Parallel $
+        (\(f, a) -> f a) <$> concurrently fs as

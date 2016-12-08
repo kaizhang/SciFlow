@@ -23,17 +23,17 @@ runWorkflow :: Workflow -> RunOpt -> IO ()
 runWorkflow (Workflow pids wf) opts = bracket (openDB $ database opts) closeDB $ \db -> do
     ks <- S.fromList <$> getKeys db
     pidStateMap <- flip M.traverseWithKey pids $ \pid attr -> case runMode opts of
-        Normal -> do
+        Master -> do
             v <- if pid `S.member` ks then newMVar Success else newMVar Scheduled
             return (v, attr)
-        ExecSingle i input output -> do
+        Slave i input output -> do
             v <- if pid == i then newMVar (EXE input output) else newMVar Skip
             return (v, attr)
-        ReadSingle i -> do
-            v <- if pid == i then newMVar Read else newMVar Skip
+        Review i -> do
+            v <- if pid == i then newMVar Get else newMVar Skip
             return (v, attr)
-        WriteSingle i input -> do
-            v <- if pid == i then newMVar (Replace input) else newMVar Skip
+        Replace i input -> do
+            v <- if pid == i then newMVar (Put input) else newMVar Skip
             return (v, attr)
 
     para <- newEmptyMVar

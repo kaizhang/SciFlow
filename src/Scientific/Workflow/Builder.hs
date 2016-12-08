@@ -40,8 +40,6 @@ import Scientific.Workflow.Types
 import Scientific.Workflow.DB
 import Scientific.Workflow.Utils (warnMsg, logMsg, runRemote, defaultRemoteOpts, RemoteOpts(..))
 
-import Debug.Trace
-
 -- | Declare a computational node. The function must have the signature:
 -- (DBData a, DBData b) => a -> IO b
 node :: ToExpQ q
@@ -124,7 +122,7 @@ mkDAG b = mkGraph ns' es'
 {-# INLINE mkDAG #-}
 
 -- | Remove nodes that are executed before from a DAG.
-trimDAG :: (M.Map T.Text NodeResult) -> DAG -> DAG
+trimDAG :: (M.Map T.Text NodeState) -> DAG -> DAG
 trimDAG st dag = gmap revise gr
   where
     revise context@(linkTo, _, nodeLabel, _)
@@ -261,14 +259,14 @@ mkProcWith (box, unbox) pid f = \input -> do
             return undefined
 
         -- Read data stored in this node
-        Read -> liftIO $ do
+        Get -> liftIO $ do
             r <- readData pid $ wfState^.db
             B.putStr $ showYaml r
             putMVar pSt Skip
             return r
 
         -- Replace data stored in this node
-        Replace inputData -> do
+        Put inputData -> do
             c <- liftIO $ B.readFile inputData
             r <- return (readYaml c) `asTypeOf` f undefined
             liftIO $ updateData pid r $ wfState^.db
