@@ -23,6 +23,7 @@ module Scientific.Workflow.Types
     , Processor
     , RunMode(..)
     , RunOpt(..)
+    , defaultRunOpt
     , DBData(..)
     , ContextData(..)
     , Attribute(..)
@@ -171,7 +172,7 @@ getConfigMaybe' :: T.Text -> ProcState (Maybe String)
 getConfigMaybe' = (fmap.fmap) T.unpack . getConfigMaybe
 
 -- | A Workflow is a stateful function
-data Workflow = Workflow (M.Map T.Text Attribute)
+data Workflow = Workflow (Gr PID Int) (M.Map T.Text Attribute)
                          (Processor () ())
 
 -- | Options
@@ -181,6 +182,17 @@ data RunOpt = RunOpt
     , runOnRemote   :: Bool
     , runMode       :: RunMode
     , configuration :: Maybe FilePath
+    , selected      :: Maybe [PID]  -- ^ Should run only selected nodes
+    }
+
+defaultRunOpt :: RunOpt
+defaultRunOpt = RunOpt
+    { database = "sciflow.db"
+    , nThread  = 1
+    , runOnRemote = False
+    , runMode = Master
+    , configuration = Nothing
+    , selected = Nothing
     }
 
 data RunMode = Master                       -- ^ Run as the master process
@@ -195,7 +207,7 @@ T.deriveLift ''Attribute
 instance T.Lift T.Text where
   lift t = [| T.pack $(T.lift $ T.unpack t) |]
 
-instance T.Lift (Gr (PID, Attribute) Int) where
+instance (T.Lift a, T.Lift b) => T.Lift (Gr a b) where
   lift gr = [| uncurry mkGraph $(T.lift (labNodes gr, labEdges gr)) |]
 
 

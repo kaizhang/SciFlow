@@ -1,9 +1,5 @@
 dist
 cabal-dev
-*.o
-*.hi
-*.chi
-*.chs.h
 *.swp
 .virtualenv
 .hsenv
@@ -11,3 +7,10 @@ cabal-dev
 cabal.sandbox.config
 cabal.config
 .stack-work
+
+*.dyn_hi
+*.dyn_o
+*.o
+*.hi
+*.chi
+*.chs.h

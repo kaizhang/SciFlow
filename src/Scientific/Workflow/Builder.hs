@@ -23,7 +23,7 @@ import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
 import qualified Data.Text           as T
 import Data.List.Split (chunksOf)
-import Data.Graph.Inductive.Graph ( mkGraph, lab, labNodes, outdeg
+import Data.Graph.Inductive.Graph ( mkGraph, lab, labNodes, outdeg, nmap
                                   , lpre, labnfilter, nfilter, gmap, suc )
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.List (sortBy, foldl')
@@ -150,10 +150,11 @@ mkWorkflow workflowName dag = do
     let expq = connect sinks [| const $ return () |]
     -- define the workflow
     workflows <-
-        [d| $(varP $ mkName workflowName) = Workflow pids $expq |]
+        [d| $(varP $ mkName workflowName) = Workflow dag' pids $expq |]
 
     return workflows
   where
+    dag' = nmap fst dag
     computeNodes = snd $ unzip $ labNodes dag
     pids = M.fromList $ map (\(i, x) -> (i, snd x)) computeNodes
     sinks = labNodes $ nfilter ((==0) . outdeg dag) dag

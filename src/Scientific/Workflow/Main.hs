@@ -32,12 +32,11 @@ import           Text.Printf                       (printf)
 import           Scientific.Workflow
 import           Scientific.Workflow.DB
 import           Scientific.Workflow.Visualize
-
 import           Data.Version                      (showVersion)
 import           Paths_SciFlow                     (version)
 
 
-data CMD = Run GlobalOpts Int Bool
+data CMD = Run GlobalOpts Int Bool (Maybe [String])
          | View
          | Cat GlobalOpts String
          | Write GlobalOpts String FilePath
@@ -73,16 +72,24 @@ runParser = Run
     <*> switch
         ( long "remote"
        <> help "Submit jobs to remote machines.")
-runExe initialize (Run opts n r) wf
+    <*> (optional . option auto)
+        ( long "select"
+       <> metavar "SELECTED"
+       <> help "Run only selected nodes.")
+runExe initialize (Run opts n r s) wf
 #ifdef SGE
-    | r = initialize $ withSGESession $ runWorkflow wf $
-        RunOpt (dbPath opts) n True Master $ configFile opts
+    | r = initialize $ withSGESession $ runWorkflow wf runOpts
 #else
-    | r = initialize $ runWorkflow wf $
-        RunOpt (dbPath opts) n True Master $ configFile opts
+    | r = initialize $ runWorkflow wf runOpts
 #endif
-    | otherwise = runWorkflow wf $
-        RunOpt (dbPath opts) n False Master $ configFile opts
+    | otherwise = runWorkflow wf runOpts{runOnRemote = False}
+  where
+    runOpts = defaultRunOpt
+        { database = dbPath opts
+        , runOnRemote = True
+        , nThread = n
+        , configuration = configFile opts
+        , selected = fmap (map T.pack) s }
 runExe _ _ _ = undefined
 {-# INLINE runExe #-}
 
@@ -96,8 +103,11 @@ catParser = Cat
         <$> globalParser
         <*> strArgument
             (metavar "NODE_ID")
-catExe (Cat opts pid) wf = runWorkflow wf $
-        RunOpt (dbPath opts) 10 False (Review $ T.pack pid) $ configFile opts
+catExe (Cat opts pid) wf = runWorkflow wf defaultRunOpt
+    { database = dbPath opts
+    , nThread = 10
+    , runMode = Review $ T.pack pid
+    , configuration = configFile opts }
 catExe _ _ = undefined
 {-# INLINE catExe #-}
 
@@ -108,8 +118,11 @@ writeParser = Write
               (metavar "NODE_ID")
           <*> strArgument
               (metavar "INPUT_FILE")
-writeExe (Write opts pid input) wf = runWorkflow wf $
-    RunOpt (dbPath opts) 10 False (Replace (T.pack pid) input) $ configFile opts
+writeExe (Write opts pid input) wf = runWorkflow wf defaultRunOpt
+    { database = dbPath opts
+    , nThread = 10
+    , runMode = Replace (T.pack pid) input
+    , configuration = configFile opts }
 writeExe _ _ = undefined
 {-# INLINE writeExe #-}
 
@@ -175,8 +188,11 @@ callParser = Call
          <*> strArgument mempty
          <*> strArgument mempty
          <*> strArgument mempty
-callExe (Call opts pid inputFl outputFl) wf = runWorkflow wf $
-    RunOpt (dbPath opts) 10 False (Slave (T.pack pid) inputFl outputFl) $ configFile opts
+callExe (Call opts pid inputFl outputFl) wf = runWorkflow wf defaultRunOpt
+    { database = dbPath opts
+    , nThread = 10
+    , runMode = Slave (T.pack pid) inputFl outputFl
+    , configuration = configFile opts }
 callExe _ _ = undefined
 {-# INLINE callExe #-}
 
@@ -187,7 +203,7 @@ mainFunc :: (IO () -> IO ()) -- initialization function
          -> IO ()
 mainFunc initialize dag wf h = execParser opts >>= execute
   where
-    execute cmd@(Run _ _ _) = runExe initialize cmd wf
+    execute cmd@(Run _ _ _ _) = runExe initialize cmd wf
     execute View = viewExe dag
     execute cmd@(Cat _ _) = catExe cmd wf
     execute cmd@(Write _ _ _) = writeExe cmd wf
