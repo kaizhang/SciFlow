@@ -17,6 +17,7 @@ import qualified Data.Map                          as M
 import           Data.Semigroup                    ((<>))
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy.IO                 as T
+import Data.List.Split (splitOn)
 
 #ifdef SGE
 import           DRMAA                             (withSGESession)
@@ -72,7 +73,7 @@ runParser = Run
     <*> switch
         ( long "remote"
        <> help "Submit jobs to remote machines.")
-    <*> (optional . option auto)
+    <*> (optional . option (maybeReader (Just . splitOn ",")))
         ( long "select"
        <> metavar "SELECTED"
        <> help "Run only selected nodes.")
