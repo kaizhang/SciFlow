@@ -66,6 +66,12 @@ import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift          as T
 import           GHC.Generics          (Generic)
 
+class DataStore s where
+    openStore :: FilePath -> IO s
+    closeStore :: s -> IO ()
+    writeData :: DBData r => PID -> r -> s -> IO ()
+    readData :: DBData r => PID -> s -> IO r
+
 -- | 'DBData' type class is used for data serialization.
 class DBData a where
     serialize :: a -> B.ByteString

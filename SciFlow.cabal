@@ -38,7 +38,7 @@ library
 
   if flag(sge)
     CPP-Options: -DSGE
-    build-depends: drmaa
+    build-depends: drmaa >=0.2.0
 
   build-depends:
       base >=4.7 && <5.0
@@ -61,6 +61,7 @@ library
     , split
     , th-lift
     , time
+    , temporary
     , text
     , template-haskell
     , transformers

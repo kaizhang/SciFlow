@@ -1,11 +1,11 @@
 flags:
     SciFlow:
-        sge: false
+        sge: true
 
 packages:
     - '.'
 
 extra-deps:
-    - drmaa-0.1.0.1
+    - drmaa-0.2.0
 
-resolver: nightly-2016-12-08
+resolver: lts-8.5

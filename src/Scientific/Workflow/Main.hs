@@ -20,7 +20,7 @@ import qualified Data.Text.Lazy.IO                 as T
 import Data.List.Split (splitOn)
 
 #ifdef SGE
-import           DRMAA                             (withSGESession)
+import           DRMAA                             (withSession)
 #endif
 
 import           Language.Haskell.TH
@@ -79,7 +79,7 @@ runParser = Run
        <> help "Run only selected nodes.")
 runExe initialize (Run opts n r s) wf
 #ifdef SGE
-    | r = initialize $ withSGESession $ runWorkflow wf runOpts
+    | r = initialize $ withSession $ runWorkflow wf runOpts
 #else
     | r = initialize $ runWorkflow wf runOpts
 #endif
