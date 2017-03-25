@@ -19,7 +19,7 @@ import           System.IO
 
 import           Scientific.Workflow.Types     (DBData (..))
 import           System.Environment.Executable (getExecutablePath)
-import           System.IO.Temp                (withTempFile)
+import           System.IO.Temp                (withTempDirectory)
 
 #ifdef SGE
 import           DRMAA                         (DrmaaAttribute (..),
@@ -69,18 +69,20 @@ defaultRemoteOpts = RemoteOpts
 
 runRemote :: (DBData a, DBData b) => RemoteOpts -> T.Text -> a -> IO b
 #ifdef SGE
-runRemote opts pid input = withTempFile tmpDir "drmaa.tmp" $ \inputFl _ ->
-    withTempFile tmpDir "drmaa.tmp" $ \outputFl _ ->
-        withTempFile tmpDir "drmaa.tmp" $ \configFl _ -> do
-            B.writeFile configFl $ encode $ environment opts
+runRemote opts pid input = withTempDirectory tmpDir "drmaa.tmp" $ \dir -> do
+    let inputFl = dir ++ "/drmaa_input.tmp"
+        outputFl = dir ++ "/drmaa_output.tmp"
+        configFl = dir ++ "/drmaa_config.tmp"
 
-            exePath <- getExecutablePath
-            let config = defaultDrmaaConfig{drmaa_native=extraParams opts}
+    B.writeFile configFl $ encode $ environment opts
 
-            B.writeFile inputFl $ serialize input
-            drmaaRun exePath [ "execFunc", "--config", configFl, T.unpack pid
-                , inputFl, outputFl ] config :: IO ()
-            deserialize <$> B.readFile outputFl
+    exePath <- getExecutablePath
+    let config = defaultDrmaaConfig{drmaa_native=extraParams opts}
+
+    B.writeFile inputFl $ serialize input
+    drmaaRun exePath [ "execFunc", "--config", configFl, T.unpack pid
+        , inputFl, outputFl ] config :: IO ()
+    deserialize <$> B.readFile outputFl
   where
     tmpDir = "./"
 #else
