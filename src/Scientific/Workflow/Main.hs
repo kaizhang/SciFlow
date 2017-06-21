@@ -96,7 +96,7 @@ runExe _ _ _ = undefined
 
 viewParser :: Parser CMD
 viewParser = pure View
-viewExe = T.putStrLn . renderBuilder
+viewExe = T.putStrLn . drawWorkflow
 {-# INLINE viewExe #-}
 
 catParser :: Parser CMD
