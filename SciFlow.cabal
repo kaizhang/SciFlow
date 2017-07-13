@@ -46,6 +46,7 @@ library
     , aeson
     , containers
     , cereal
+    , cereal-text
     , directory
     , exceptions
     , executable-path

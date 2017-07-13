@@ -58,9 +58,8 @@ import           Data.Graph.Inductive.PatriciaTree (Gr)
 import qualified Data.Map                          as M
 import           Data.Maybe                        (fromJust, fromMaybe)
 import qualified Data.Serialize                    as S
+import           Data.Serialize.Text               ()
 import qualified Data.Text                         as T
-import qualified Data.Text.Encoding                as TE
-import qualified Data.Text.Lazy.Encoding           as TLE
 import           Data.Yaml                         (FromJSON (..), ToJSON (..),
                                                     decode, encode)
 import           Database.SQLite.Simple            (Connection)
@@ -243,9 +242,5 @@ instance Applicative Parallel where
     pure = Parallel . pure
     Parallel fs <*> Parallel as = Parallel $
         (\(f, a) -> f a) <$> concurrently fs as
-
-instance S.Serialize T.Text where
-    put = S.put . TE.encodeUtf8
-    get = TE.decodeUtf8 <$> S.get
 
 instance S.Serialize (Gr (PID, Attribute) Int)
