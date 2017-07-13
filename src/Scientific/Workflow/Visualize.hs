@@ -5,6 +5,7 @@ module Scientific.Workflow.Visualize
 
 import           Control.Arrow                     (second)
 import           Control.Lens
+import qualified Data.ByteString                   as B
 import           Data.Graph.Inductive.Graph
 import           Data.Graph.Inductive.PatriciaTree (Gr)
 import qualified Data.GraphViz                     as G
@@ -14,7 +15,6 @@ import qualified Data.GraphViz.Printing            as G
 import           Data.List                         (intersperse)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
-import           Scientific.Workflow.Types         (label)
 
 import           Scientific.Workflow.Types
 

@@ -13,11 +13,12 @@ module Scientific.Workflow.Main
 import qualified Data.ByteString.Char8             as B
 import           Data.Graph.Inductive.Graph        (nmap)
 import           Data.Graph.Inductive.PatriciaTree (Gr)
+import           Data.List.Split                   (splitOn)
 import qualified Data.Map                          as M
 import           Data.Semigroup                    ((<>))
+import           Data.Serialize                    (encode)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy.IO                 as T
-import Data.List.Split (splitOn)
 
 #ifdef SGE
 import           DRMAA                             (withSession)
@@ -30,15 +31,14 @@ import           Shelly                            (fromText, lsT, mkdir_p,
                                                     rm_f, shelly)
 import           Text.Printf                       (printf)
 
+import           Data.Version                      (showVersion)
+import           Paths_SciFlow                     (version)
 import           Scientific.Workflow
 import           Scientific.Workflow.DB
 import           Scientific.Workflow.Visualize
-import           Data.Version                      (showVersion)
-import           Paths_SciFlow                     (version)
-
 
 data CMD = Run GlobalOpts Int Bool (Maybe [String])
-         | View
+         | View Bool
          | Cat GlobalOpts String
          | Write GlobalOpts String FilePath
          | Delete GlobalOpts String
@@ -95,8 +95,9 @@ runExe _ _ _ = undefined
 {-# INLINE runExe #-}
 
 viewParser :: Parser CMD
-viewParser = pure View
-viewExe = T.putStrLn . drawWorkflow
+viewParser = View <$> switch (long "raw")
+viewExe (View isRaw) wf | isRaw = B.putStr $ encode wf
+                        | otherwise = T.putStrLn $ drawWorkflow wf
 {-# INLINE viewExe #-}
 
 catParser :: Parser CMD
@@ -198,19 +199,20 @@ callExe _ _ = undefined
 {-# INLINE callExe #-}
 
 
+
 mainFunc :: (IO () -> IO ()) -- initialization function
          -> Gr (PID, Attribute) Int -> Workflow
          -> String  -- program header
          -> IO ()
 mainFunc initialize dag wf h = execParser opts >>= execute
   where
-    execute cmd@(Run _ _ _ _) = runExe initialize cmd wf
-    execute View = viewExe dag
-    execute cmd@(Cat _ _) = catExe cmd wf
-    execute cmd@(Write _ _ _) = writeExe cmd wf
-    execute cmd@(Delete _ _) = rmExe cmd
-    execute cmd@(Recover _ _) = recoverExe cmd wf
-    execute cmd@(DumpDB _ _) = dumpDBExe cmd wf
+    execute cmd@(Run _ _ _ _)  = runExe initialize cmd wf
+    execute cmd@(View _)       = viewExe cmd dag
+    execute cmd@(Cat _ _)      = catExe cmd wf
+    execute cmd@(Write _ _ _)  = writeExe cmd wf
+    execute cmd@(Delete _ _)   = rmExe cmd
+    execute cmd@(Recover _ _)  = recoverExe cmd wf
+    execute cmd@(DumpDB _ _)   = dumpDBExe cmd wf
     execute cmd@(Call _ _ _ _) = callExe cmd wf
 
     opts = info (helper <*> parser) $ fullDesc <> header h

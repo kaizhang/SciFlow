@@ -1,8 +1,8 @@
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Scientific.Workflow.Types
     ( WorkflowDB(..)
@@ -51,6 +51,7 @@ import           Control.Exception                 (SomeException)
 import           Control.Lens                      (at, makeLenses, (^.))
 import           Control.Monad.State               (State, StateT, get)
 import           Control.Monad.Trans.Except        (ExceptT)
+import           Data.Aeson.Types
 import qualified Data.ByteString                   as B
 import           Data.Graph.Inductive.Graph        (labEdges, labNodes, mkGraph)
 import           Data.Graph.Inductive.PatriciaTree (Gr)
@@ -58,13 +59,14 @@ import qualified Data.Map                          as M
 import           Data.Maybe                        (fromJust, fromMaybe)
 import qualified Data.Serialize                    as S
 import qualified Data.Text                         as T
-import           Data.Yaml                         (FromJSON(..), ToJSON(..), decode,
-                                                    encode,)
-import Data.Aeson.Types
+import qualified Data.Text.Encoding                as TE
+import qualified Data.Text.Lazy.Encoding           as TLE
+import           Data.Yaml                         (FromJSON (..), ToJSON (..),
+                                                    decode, encode)
 import           Database.SQLite.Simple            (Connection)
+import           GHC.Generics                      (Generic)
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift          as T
-import           GHC.Generics          (Generic)
 
 class DataStore s where
     openStore :: FilePath -> IO s
@@ -84,13 +86,13 @@ instance (FromJSON a, ToJSON a, S.Serialize a) => DBData a where
     deserialize = fromEither . S.decode
       where
         fromEither (Right x) = x
-        fromEither _ = error "decode failed"
+        fromEither _         = error "decode failed"
     showYaml = encode
     readYaml = fromJust . decode
 
 data ContextData context dat = ContextData
     { _context :: context
-    , _data :: dat
+    , _data    :: dat
     } deriving (Generic)
 
 instance (FromJSON c, FromJSON d) => FromJSON (ContextData c d) where
@@ -118,7 +120,9 @@ data Attribute = Attribute
     , _stateful       :: Bool        -- ^ Whether the node function has access
                                      -- to internal states
     , _remoteParam    :: String
-    }
+    } deriving (Generic)
+
+instance S.Serialize Attribute
 
 makeLenses ''Attribute
 
@@ -239,3 +243,9 @@ instance Applicative Parallel where
     pure = Parallel . pure
     Parallel fs <*> Parallel as = Parallel $
         (\(f, a) -> f a) <$> concurrently fs as
+
+instance S.Serialize T.Text where
+    put = S.put . TE.encodeUtf8
+    get = TE.decodeUtf8 <$> S.get
+
+instance S.Serialize (Gr (PID, Attribute) Int)
