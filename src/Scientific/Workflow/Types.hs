@@ -9,6 +9,7 @@ module Scientific.Workflow.Types
     , Workflow(..)
     , PID
     , NodeState(..)
+    , SpecialMode(..)
     , ProcState
     , WorkflowState(..)
     , db
@@ -25,7 +26,6 @@ module Scientific.Workflow.Types
     , RunOpt(..)
     , defaultRunOpt
     , DBData(..)
-    , ContextData(..)
     , Parallel(..)
     , ProcFunction(..)
     ) where
@@ -81,19 +81,6 @@ instance (FromJSON a, ToJSON a, S.Serialize a) => DBData a where
     showYaml = encode
     readYaml = fromJust . decode
 
-data ContextData context dat = ContextData
-    { _context :: context
-    , _data    :: dat
-    } deriving (Generic)
-
-instance (FromJSON c, FromJSON d) => FromJSON (ContextData c d) where
-    parseJSON = genericParseJSON defaultOptions
-
-instance (ToJSON c, ToJSON d) => ToJSON (ContextData c d) where
-    toEncoding = genericToEncoding defaultOptions
-
-instance (S.Serialize c, S.Serialize d) => S.Serialize (ContextData c d)
-
 
 -- | An abstract type representing the database used to store states of workflow
 newtype WorkflowDB  = WorkflowDB Connection
@@ -105,11 +92,14 @@ type PID = T.Text
 data NodeState = Success                -- ^ The node has been executed
                | Fail SomeException     -- ^ The node failed to finish
                | Scheduled              -- ^ The node will be executed
-               | Skip                   -- ^ The node will not be executed
-               | Get                    -- ^ Simply read the saved data from database
-               | Put FilePath           -- ^ Read the result from the input file
-                                        -- and save it to database.
-               | EXE FilePath FilePath  -- ^ Read input from the input file and
+               | Special SpecialMode    -- ^ Indicate the workflow is currently
+                                        -- running under special mode
+
+data SpecialMode = Skip        -- ^ The node will not be executed
+                 | FetchData   -- ^ Simply read the saved data from database
+                 | WriteData FilePath  -- ^ Read the result from the input file
+                                     -- and save it to database.
+                 | EXE FilePath FilePath  -- ^ Read input from the input file and
                                         -- save results to the output file. This is
                                         -- used in remote mode.
 

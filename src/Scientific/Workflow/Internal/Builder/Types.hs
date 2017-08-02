@@ -11,6 +11,8 @@ import           Data.Graph.Inductive.PatriciaTree (Gr)
 import           Data.Serialize                    (Serialize)
 import           Data.Serialize.Text               ()
 import           Data.Text                         (Text)
+import           Data.Yaml                         (FromJSON (..), ToJSON (..))
+import           Data.Aeson.Types (genericParseJSON, genericToEncoding, defaultOptions)
 import           GHC.Generics                      (Generic)
 import           Language.Haskell.TH               (ExpQ, Name, varE)
 
@@ -36,11 +38,7 @@ type Builder = State ([Node], [Edge])
 data Attribute = Attribute
     { _label          :: Text      -- ^ Short description
     , _note           :: Text      -- ^ Long description
-    , _batch          :: Int         -- ^ Batch size. If > 0, inputs will be divided
-                                     -- into batches.
     , _submitToRemote :: Maybe Bool  -- ^ Overwrite the global option
-    , _stateful       :: Bool        -- ^ Whether the node function has access
-                                     -- to internal states
     , _remoteParam    :: String
     } deriving (Generic)
 
@@ -52,9 +50,7 @@ defaultAttribute :: Attribute
 defaultAttribute = Attribute
     { _label = ""
     , _note = ""
-    , _batch = -1
     , _submitToRemote = Nothing
-    , _stateful = False
     , _remoteParam = ""
     }
 
@@ -71,3 +67,17 @@ instance ToExpQ Name where
 
 instance ToExpQ ExpQ where
     toExpQ = id
+
+-- | Data
+data ContextData context dat = ContextData
+    { _context :: context
+    , _data    :: dat
+    } deriving (Generic)
+
+instance (FromJSON c, FromJSON d) => FromJSON (ContextData c d) where
+    parseJSON = genericParseJSON defaultOptions
+
+instance (ToJSON c, ToJSON d) => ToJSON (ContextData c d) where
+    toEncoding = genericToEncoding defaultOptions
+
+instance (Serialize c, Serialize d) => Serialize (ContextData c d)

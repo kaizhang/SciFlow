@@ -7,13 +7,13 @@
 
 module Scientific.Workflow.Internal.Builder
     ( node
+    , nodeP
     , link
     , (~>)
     , path
     , buildWorkflow
     , buildWorkflowPart
     , mkDAG
-    , ContextData(..)
     ) where
 
 import Control.Monad.Identity (runIdentity)
@@ -42,18 +42,40 @@ import Scientific.Workflow.Internal.Builder.Types
 import Scientific.Workflow.Internal.DB
 import Scientific.Workflow.Internal.Utils (warnMsg, logMsg, runRemote, defaultRemoteOpts, RemoteOpts(..))
 
--- | Declare a computational node. The function must have the signature:
--- (DBData a, DBData b) => a -> IO b
+-- | Declare a computational node.
+-- Input Function: (DBData a, DBData b) => a -> m b, where m = IO or ProcState
+-- Result: a -> ProcState b
 node :: ToExpQ q
      => PID                  -- ^ node id
      -> q                    -- ^ function
      -> State Attribute ()   -- ^ Attribues
      -> Builder ()
-node p fn setAttr = modify $ _1 %~ (newNode:)
+node pid fn setAttr = modify $ _1 %~ (newNode:)
   where
     attr = execState setAttr defaultAttribute
-    newNode = Node p (toExpQ fn) attr
+    newNode = Node pid [| mkProc pid $ liftProcFunction $(toExpQ fn) |] attr
 {-# INLINE node #-}
+
+-- | Declare a computational node. The function must have the signature:
+-- Input Function: (DBData a, DBData b) => a -> m b
+-- Result: [a] -> m [b]
+nodeP :: ToExpQ q
+      => Int
+      -> PID                  -- ^ node id
+      -> q                    -- ^ function
+      -> State Attribute ()   -- ^ Attribues
+      -> Builder ()
+nodeP n pid fn setAttr = modify $ _1 %~ (newNode:)
+  where
+    attr = execState setAttr defaultAttribute
+    newNode = Node pid funcExp attr
+    funcExp' = [| liftProcFunction $(toExpQ fn) |]
+    funcExp = do
+        e <- funcExp'
+        if argIsContextData e
+            then [| mkProcListNWithContext n pid $(funcExp') |]
+            else [| mkProcListN n pid $(funcExp') |]
+{-# INLINE nodeP #-}
 
 -- | many-to-one generalized link function
 link :: [PID] -> PID -> Builder ()
@@ -149,20 +171,10 @@ mkWorkflow workflowName dag = do
     pids = M.fromList $ map (\Node{..} -> (_nodePid, _nodeAttr)) computeNodes
     sinks = labNodes $ nfilter ((==0) . outdeg dag) dag
 
-    backTrack (i, Node{..})
-        | bSize > 0 = do
-            e <- _nodeFunction
-            if argIsContextData e
-                then connect (fst $ unzip parents)
-                        [| mkProcListNWithContext bSize _nodePid $fn' |]
-                else connect (fst $ unzip parents)
-                        [| mkProcListN bSize _nodePid $fn' |]
-        | otherwise = connect (fst $ unzip parents) [| mkProc _nodePid $fn' |]
+    backTrack (i, Node{..}) = connect (fst $ unzip parents) _nodeFunction
       where
         parents = map ( \(x, o) -> ((x, fromJust $ lab dag x), o) ) $
             sortBy (comparing snd) $ lpre dag i
-        fn' = [| liftProcFunction $_nodeFunction |]
-        bSize = _nodeAttr^.batch
 
     connect [] sink = sink
     connect [source] sink = [| $(backTrack source) >=> $sink |]
@@ -240,26 +252,39 @@ mkProcWith (box, unbox) pid f = \input -> do
                     _ <- forkIO $ putMVar (wfState^.procParaControl) ()
                     logMsg $ printf "%s: Finished." pid
                     return r
-        Skip -> liftIO $ putMVar pSt pStValue >> return undefined
-        EXE inputData output -> do
-            c <- liftIO $ B.readFile inputData
-            r <- f $ deserialize c
-            liftIO $ B.writeFile output $ serialize r
-            liftIO $ putMVar pSt Skip
-            return undefined
 
-        -- Read data stored in this node
-        Get -> liftIO $ do
-            r <- readData pid $ wfState^.db
-            B.putStr $ showYaml r
-            putMVar pSt Skip
-            return r
+        Special mode -> handleSpecialMode mode wfState pSt pid f
 
-        -- Replace data stored in this node
-        Put inputData -> do
-            c <- liftIO $ B.readFile inputData
-            r <- return (readYaml c) `asTypeOf` f undefined
-            liftIO $ updateData pid r $ wfState^.db
-            liftIO $ putMVar pSt Skip
-            return r
 {-# INLINE mkProcWith #-}
+
+handleSpecialMode :: (DBData a, DBData b)
+                  => SpecialMode
+                  -> WorkflowState
+                  -> MVar NodeState -> PID -> (a -> ProcState b)
+                  -> ProcState b
+handleSpecialMode mode wfState nodeSt pid fn = case mode of
+    Skip -> liftIO $ putMVar nodeSt (Special Skip) >> return undefined
+
+    EXE inputData output -> do
+        c <- liftIO $ B.readFile inputData
+        r <- fn $ deserialize c
+        liftIO $ B.writeFile output $ serialize r
+        liftIO $ putMVar nodeSt $ Special Skip
+        return r
+
+    -- Read data stored in this node
+    FetchData -> liftIO $ do
+        r <- readData pid $ wfState^.db
+        B.putStr $ showYaml r
+        putMVar nodeSt $ Special Skip
+        return r
+
+    -- Replace data stored in this node
+    WriteData inputData -> do
+        c <- liftIO $ B.readFile inputData
+        r <- return (readYaml c) `asTypeOf` fn undefined
+        liftIO $ do
+            updateData pid r $ wfState^.db
+            putMVar nodeSt $ Special Skip
+            return r
+{-# INLINE handleSpecialMode #-}

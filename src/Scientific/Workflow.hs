@@ -39,21 +39,21 @@ runWorkflow (Workflow gr pids wf) opts =
             case runMode opts of
                 Master -> do
                     v <- case fmap (S.member pid) selection of
-                        Just False -> newMVar Skip
+                        Just False -> newMVar $ Special Skip
                         _ -> if pid `S.member` ks
                             then newMVar Success
                             else newMVar Scheduled
                     return (v, attr)
                 Slave i input output -> do
                     v <- if pid == i
-                        then newMVar (EXE input output)
-                        else newMVar Skip
+                        then newMVar $ Special $ EXE input output
+                        else newMVar $ Special Skip
                     return (v, attr)
                 Review i -> do
-                    v <- if pid == i then newMVar Get else newMVar Skip
+                    v <- if pid == i then newMVar (Special FetchData) else newMVar $ Special Skip
                     return (v, attr)
                 Replace i input -> do
-                    v <- if pid == i then newMVar (Put input) else newMVar Skip
+                    v <- if pid == i then newMVar (Special $ WriteData input) else newMVar $ Special Skip
                     return (v, attr)
 
         para <- newEmptyMVar
