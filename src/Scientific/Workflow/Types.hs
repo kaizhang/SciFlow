@@ -26,46 +26,38 @@ module Scientific.Workflow.Types
     , defaultRunOpt
     , DBData(..)
     , ContextData(..)
-    , Attribute(..)
-    , AttributeSetter
-    , defaultAttribute
-    , label
-    , note
-    , batch
-    , submitToRemote
-    , stateful
-    , remoteParam
-
     , Parallel(..)
-
-    -- * Builder types
-    , Node
-    , Edge
-    , EdgeOrd
-    , Builder
+    , ProcFunction(..)
     ) where
 
-import           Control.Concurrent.Async.Lifted   (concurrently)
-import           Control.Concurrent.MVar           (MVar)
-import           Control.Exception                 (SomeException)
-import           Control.Lens                      (at, makeLenses, (^.))
-import           Control.Monad.State               (State, StateT, get)
-import           Control.Monad.Trans.Except        (ExceptT)
+import           Control.Concurrent.Async.Lifted            (concurrently)
+import           Control.Concurrent.MVar                    (MVar)
+import           Control.Exception                          (SomeException)
+import           Control.Lens                               (at, makeLenses,
+                                                             (^.))
+import           Control.Monad.IO.Class                     (liftIO)
+import           Control.Monad.State                        (State, StateT, get)
+import           Control.Monad.Trans.Except                 (ExceptT)
 import           Data.Aeson.Types
-import qualified Data.ByteString                   as B
-import           Data.Graph.Inductive.Graph        (labEdges, labNodes, mkGraph)
-import           Data.Graph.Inductive.PatriciaTree (Gr)
-import qualified Data.Map                          as M
-import           Data.Maybe                        (fromJust, fromMaybe)
-import qualified Data.Serialize                    as S
-import           Data.Serialize.Text               ()
-import qualified Data.Text                         as T
-import           Data.Yaml                         (FromJSON (..), ToJSON (..),
-                                                    decode, encode)
-import           Database.SQLite.Simple            (Connection)
-import           GHC.Generics                      (Generic)
+import qualified Data.ByteString                            as B
+import           Data.Graph.Inductive.Graph                 (labEdges, labNodes,
+                                                             mkGraph)
+import           Data.Graph.Inductive.PatriciaTree          (Gr)
+import qualified Data.Map                                   as M
+import           Data.Maybe                                 (fromJust,
+                                                             fromMaybe)
+import qualified Data.Serialize                             as S
+import           Data.Serialize.Text                        ()
+import qualified Data.Text                                  as T
+import           Data.Yaml                                  (FromJSON (..),
+                                                             ToJSON (..),
+                                                             decode, encode)
+import           Database.SQLite.Simple                     (Connection)
+import           GHC.Generics                               (Generic)
 import           Language.Haskell.TH
-import qualified Language.Haskell.TH.Lift          as T
+import qualified Language.Haskell.TH.Lift                   as T
+
+import           Scientific.Workflow.Internal.Builder.Types (Attribute)
 
 class DataStore s where
     openStore :: FilePath -> IO s
@@ -108,34 +100,6 @@ newtype WorkflowDB  = WorkflowDB Connection
 
 -- | The id of a node
 type PID = T.Text
-
--- | Node attribute
-data Attribute = Attribute
-    { _label          :: T.Text      -- ^ Short description
-    , _note           :: T.Text      -- ^ Long description
-    , _batch          :: Int         -- ^ Batch size. If > 0, inputs will be divided
-                                     -- into batches.
-    , _submitToRemote :: Maybe Bool  -- ^ Overwrite the global option
-    , _stateful       :: Bool        -- ^ Whether the node function has access
-                                     -- to internal states
-    , _remoteParam    :: String
-    } deriving (Generic)
-
-instance S.Serialize Attribute
-
-makeLenses ''Attribute
-
-defaultAttribute :: Attribute
-defaultAttribute = Attribute
-    { _label = ""
-    , _note = ""
-    , _batch = -1
-    , _submitToRemote = Nothing
-    , _stateful = False
-    , _remoteParam = ""
-    }
-
-type AttributeSetter = State Attribute ()
 
 -- | The result of a computation node
 data NodeState = Success                -- ^ The node has been executed
@@ -220,18 +184,6 @@ instance (T.Lift a, T.Lift b) => T.Lift (Gr a b) where
   lift gr = [| uncurry mkGraph $(T.lift (labNodes gr, labEdges gr)) |]
 
 
--- | The order of incoming edges of a node
-type EdgeOrd = Int
-
--- | A computation node
-type Node = (PID, (ExpQ, Attribute))
-
--- | Links between computational nodes
-type Edge = (PID, PID, EdgeOrd)
-
-type Builder = State ([Node], [Edge])
-
-
 -- | Auxiliary type for concurrency support.
 newtype Parallel a = Parallel { runParallel :: ProcState a}
 
@@ -244,3 +196,12 @@ instance Applicative Parallel where
         (\(f, a) -> f a) <$> concurrently fs as
 
 instance S.Serialize (Gr (PID, Attribute) Int)
+
+class ProcFunction m where
+    liftProcFunction :: (a -> m b) -> (a -> ProcState b)
+
+instance ProcFunction IO where
+    liftProcFunction fn = liftIO . fn
+
+instance ProcFunction (StateT WorkflowState (ExceptT (PID, SomeException) IO)) where
+    liftProcFunction = id

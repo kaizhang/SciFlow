@@ -1,11 +1,7 @@
-flags:
-    SciFlow:
-        sge: true
-
 packages:
     - '.'
 
 extra-deps:
     - drmaa-0.2.0
 
-resolver: lts-8.16
+resolver: lts-9.0

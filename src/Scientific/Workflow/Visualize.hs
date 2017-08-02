@@ -17,6 +17,7 @@ import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 
 import           Scientific.Workflow.Types
+import           Scientific.Workflow.Internal.Builder.Types (Attribute, note)
 
 -- | Print the computation graph
 drawWorkflow :: Gr (PID, Attribute) Int -> TL.Text

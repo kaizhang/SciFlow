@@ -20,7 +20,7 @@ import           Data.Serialize                    (encode)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy.IO                 as T
 
-#ifdef SGE
+#ifdef DRMAA
 import           DRMAA                             (withSession)
 #endif
 
@@ -34,7 +34,8 @@ import           Text.Printf                       (printf)
 import           Data.Version                      (showVersion)
 import           Paths_SciFlow                     (version)
 import           Scientific.Workflow
-import           Scientific.Workflow.DB
+import           Scientific.Workflow.Internal.DB
+import           Scientific.Workflow.Internal.Builder.Types
 import           Scientific.Workflow.Visualize
 
 data CMD = Run GlobalOpts Int Bool (Maybe [String])
@@ -78,7 +79,7 @@ runParser = Run
        <> metavar "SELECTED"
        <> help "Run only selected nodes.")
 runExe initialize (Run opts n r s) wf
-#ifdef SGE
+#ifdef DRMAA
     | r = initialize $ withSession $ runWorkflow wf runOpts
 #else
     | r = initialize $ runWorkflow wf runOpts
@@ -263,5 +264,5 @@ mainWith opts builder = do
     return $ wf_q ++ main_q
   where
     wfName = "sciFlowDefaultMain"
-    dag = nmap (\(a,(_,b)) -> (a,b)) $ mkDAG builder
+    dag = nmap (\x -> (_nodePid x, _nodeAttr x)) $ mkDAG builder
 {-# INLINE mainWith #-}

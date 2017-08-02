@@ -3,8 +3,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RecordWildCards #-}
 
-module Scientific.Workflow.Builder
+module Scientific.Workflow.Internal.Builder
     ( node
     , link
     , (~>)
@@ -16,7 +17,7 @@ module Scientific.Workflow.Builder
     ) where
 
 import Control.Monad.Identity (runIdentity)
-import Control.Lens ((^.), (%~), _1, _2, _3)
+import Control.Lens ((^.), (%~), _1, _2, _3, (&))
 import Control.Monad.Trans.Except (throwE)
 import           Control.Monad.State (lift, liftIO, (>=>), foldM_, execState, modify, State, get)
 import Control.Concurrent.MVar
@@ -37,8 +38,9 @@ import           Language.Haskell.TH
 import Control.Monad.Catch (try)
 
 import Scientific.Workflow.Types
-import Scientific.Workflow.DB
-import Scientific.Workflow.Utils (warnMsg, logMsg, runRemote, defaultRemoteOpts, RemoteOpts(..))
+import Scientific.Workflow.Internal.Builder.Types
+import Scientific.Workflow.Internal.DB
+import Scientific.Workflow.Internal.Utils (warnMsg, logMsg, runRemote, defaultRemoteOpts, RemoteOpts(..))
 
 -- | Declare a computational node. The function must have the signature:
 -- (DBData a, DBData b) => a -> IO b
@@ -50,12 +52,12 @@ node :: ToExpQ q
 node p fn setAttr = modify $ _1 %~ (newNode:)
   where
     attr = execState setAttr defaultAttribute
-    newNode = (p, (toExpQ fn, attr))
+    newNode = Node p (toExpQ fn) attr
 {-# INLINE node #-}
 
 -- | many-to-one generalized link function
 link :: [PID] -> PID -> Builder ()
-link xs t = modify $ _2 %~ (zip3 xs (repeat t) [0..] ++)
+link xs t = modify $ _2 %~ (zipWith3 Edge xs (repeat t) [0..] ++)
 {-# INLINE link #-}
 
 -- | (~>) = link.
@@ -73,11 +75,10 @@ path ns = foldM_ f (head ns) $ tail ns
 -- | Build the workflow. This function will first create functions defined in
 -- the builder. These pieces will then be assembled to form a function that will
 -- execute each individual function in a correct order, named $name$.
--- Lastly, a function table will be created with the name $name$_function_table.
 buildWorkflow :: String     -- ^ Name of the workflow
               -> Builder () -- ^ Builder
               -> Q [Dec]
-buildWorkflow prefix b = mkWorkflow prefix $ mkDAG b
+buildWorkflow workflowName = mkWorkflow workflowName . mkDAG
 
 -- | Build only a part of the workflow that has not been executed. This is used
 -- during development for fast compliation.
@@ -94,31 +95,19 @@ buildWorkflowPart db wfName b = do
         ks <- getKeys db
         return $ M.fromList $ zip ks $ repeat Success
 
--- | Objects that can be converted to ExpQ
-class ToExpQ a where
-    toExpQ :: a -> ExpQ
-
-instance ToExpQ Name where
-    toExpQ = varE
-
-instance ToExpQ ExpQ where
-    toExpQ = id
-
-type DAG = Gr Node EdgeOrd
-
 -- TODO: check the graph is a valid DAG
 -- | Contruct a DAG representing the workflow
 mkDAG :: Builder () -> DAG
-mkDAG b = mkGraph ns' es'
+mkDAG builder = mkGraph ns' es'
   where
-    ns' = map (\x -> (pid2nid $ fst x, x)) ns
-    es' = map (\(fr, t, o) -> (pid2nid fr, pid2nid t, o)) es
-    (ns, es) = execState b ([], [])
-    pid2nid p = M.findWithDefault errMsg p m
-      where
-        m = M.fromListWithKey err $ zip (map fst ns) [0..]
-        err k _ _ = error $ "multiple instances for: " ++ T.unpack k
-        errMsg = error $ "mkDAG: cannot identify node: " ++ T.unpack p
+    ns' = map (\x -> (pid2nid $ _nodePid x, x)) ns
+    es' = map (\Edge{..} -> (pid2nid _edgeFrom, pid2nid _edgeTo, _edgeOrd)) es
+    (ns, es) = execState builder ([], [])
+    pid2nid pid = M.findWithDefault
+        (error $ "mkDAG: cannot identify node: " ++ T.unpack pid) pid $
+        M.fromListWithKey
+            (\k _ _ -> error $ "Multiple declaration for: " ++ T.unpack k) $
+            zip (map _nodePid ns) [0..]
 {-# INLINE mkDAG #-}
 
 -- | Remove nodes that are executed before from a DAG.
@@ -126,17 +115,18 @@ trimDAG :: (M.Map T.Text NodeState) -> DAG -> DAG
 trimDAG st dag = gmap revise gr
   where
     revise context@(linkTo, _, nodeLabel, _)
-        | done (fst nodeLabel) && null linkTo = _3._2._1 %~ e $ context
-        | otherwise = context
+        | shallBuild (_nodePid nodeLabel) && null linkTo = context
+        | otherwise = context & _3 %~
+            ( \l -> l{_nodeFunction = feedEmptyInput (_nodeFunction l)} )
       where
-        e x = [| (\() -> undefined) >=> $(x) |]
+        feedEmptyInput x = [| (\() -> undefined) >=> $(x) |]
     gr = labnfilter f dag
       where
-        f (i, (x,_)) = (not . done) x || any (not . done) children
-          where children = map (fst . fromJust . lab dag) $ suc dag i
-    done x = case M.lookup x st of
-        Just Success -> True
-        _ -> False
+        f (i, x) = shallBuild (_nodePid x) || any shallBuild children
+          where children = map (_nodePid . fromJust . lab dag) $ suc dag i
+    shallBuild x = case M.lookup x st of
+        Just Success -> False
+        _ -> True
 {-# INLINE trimDAG #-}
 
 
@@ -154,26 +144,25 @@ mkWorkflow workflowName dag = do
 
     return workflows
   where
-    dag' = nmap fst dag
+    dag' = nmap _nodePid dag
     computeNodes = snd $ unzip $ labNodes dag
-    pids = M.fromList $ map (\(i, x) -> (i, snd x)) computeNodes
+    pids = M.fromList $ map (\Node{..} -> (_nodePid, _nodeAttr)) computeNodes
     sinks = labNodes $ nfilter ((==0) . outdeg dag) dag
 
-    backTrack (i, (p, (fn, attr)))
+    backTrack (i, Node{..})
         | bSize > 0 = do
-            e <- fn
+            e <- _nodeFunction
             if argIsContextData e
                 then connect (fst $ unzip parents)
-                        [| mkProcListNWithContext bSize p $fn' |]
+                        [| mkProcListNWithContext bSize _nodePid $fn' |]
                 else connect (fst $ unzip parents)
-                        [| mkProcListN bSize p $fn' |]
-        | otherwise = connect (fst $ unzip parents) [| mkProc p $fn' |]
+                        [| mkProcListN bSize _nodePid $fn' |]
+        | otherwise = connect (fst $ unzip parents) [| mkProc _nodePid $fn' |]
       where
         parents = map ( \(x, o) -> ((x, fromJust $ lab dag x), o) ) $
             sortBy (comparing snd) $ lpre dag i
-        fn' | attr^.stateful = fn
-            | otherwise = [| liftIO . $fn |]
-        bSize = attr^.batch
+        fn' = [| liftProcFunction $_nodeFunction |]
+        bSize = _nodeAttr^.batch
 
     connect [] sink = sink
     connect [source] sink = [| $(backTrack source) >=> $sink |]

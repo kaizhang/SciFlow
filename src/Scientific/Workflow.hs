@@ -1,6 +1,7 @@
 module Scientific.Workflow
     ( runWorkflow
-    , module Scientific.Workflow.Builder
+    , module Scientific.Workflow.Internal.Builder
+    , module Scientific.Workflow.Internal.Builder.Types
     , module Scientific.Workflow.Types
     ) where
 
@@ -18,10 +19,11 @@ import           Data.Tuple                     (swap)
 import           Data.Yaml                      (decodeFile)
 import           Text.Printf                    (printf)
 
-import           Scientific.Workflow.Builder
-import           Scientific.Workflow.DB
+import           Scientific.Workflow.Internal.Builder
+import           Scientific.Workflow.Internal.Builder.Types
+import           Scientific.Workflow.Internal.DB
 import           Scientific.Workflow.Types
-import           Scientific.Workflow.Utils
+import           Scientific.Workflow.Internal.Utils
 
 runWorkflow :: Workflow -> RunOpt -> IO ()
 runWorkflow (Workflow gr pids wf) opts =

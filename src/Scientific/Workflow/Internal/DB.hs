@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Scientific.Workflow.DB
+module Scientific.Workflow.Internal.DB
     ( openDB
     , closeDB
     , readData

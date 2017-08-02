@@ -1,5 +1,5 @@
 name:                SciFlow
-version:             0.5.4-beta
+version:             0.6.0-dev
 synopsis:            Scientific workflow management system
 description:
   SciFlow is to help programmers design complex workflows
@@ -9,7 +9,7 @@ license:             MIT
 license-file:        LICENSE
 author:              Kai Zhang
 maintainer:          kai@kzhang.org
-copyright:           (c) 2015-2016 Kai Zhang
+copyright:           (c) 2015-2017 Kai Zhang
 category:            Control
 build-type:          Simple
 cabal-version:       >=1.10
@@ -18,26 +18,27 @@ extra-source-files:
   README.md
   example.png
 
-Flag sge
-  Description: Enable SGE support
+Flag drmaa
+  Description: Enable DRMAA integration
   Default:     False
 
 library
   ghc-options: -Wall
   exposed-modules:
     Scientific.Workflow
-    Scientific.Workflow.Builder
-    Scientific.Workflow.DB
     Scientific.Workflow.Main
     Scientific.Workflow.Types
-    Scientific.Workflow.Utils
     Scientific.Workflow.Visualize
+    Scientific.Workflow.Internal.Builder
+    Scientific.Workflow.Internal.Builder.Types
+    Scientific.Workflow.Internal.DB
+    Scientific.Workflow.Internal.Utils
 
   other-modules:
     Paths_SciFlow
 
-  if flag(sge)
-    CPP-Options: -DSGE
+  if flag(drmaa)
+    CPP-Options: -DDRMAA
     build-depends: drmaa >=0.2.0
 
   build-depends:

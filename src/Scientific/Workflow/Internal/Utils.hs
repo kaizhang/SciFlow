@@ -1,5 +1,5 @@
 {-# LANGUAGE CPP #-}
-module Scientific.Workflow.Utils
+module Scientific.Workflow.Internal.Utils
     ( RemoteOpts(..)
     , defaultRemoteOpts
     , runRemote
@@ -21,7 +21,7 @@ import           Scientific.Workflow.Types     (DBData (..))
 import           System.Environment.Executable (getExecutablePath)
 import           System.IO.Temp                (withTempDirectory)
 
-#ifdef SGE
+#ifdef DRMAA
 import           DRMAA                         (DrmaaAttribute (..),
                                                 defaultDrmaaConfig, drmaaRun)
 #endif
@@ -68,7 +68,7 @@ defaultRemoteOpts = RemoteOpts
     }
 
 runRemote :: (DBData a, DBData b) => RemoteOpts -> T.Text -> a -> IO b
-#ifdef SGE
+#ifdef DRMAA
 runRemote opts pid input = withTempDirectory tmpDir "drmaa.tmp" $ \dir -> do
     let inputFl = dir ++ "/drmaa_input.tmp"
         outputFl = dir ++ "/drmaa_output.tmp"
@@ -86,5 +86,5 @@ runRemote opts pid input = withTempDirectory tmpDir "drmaa.tmp" $ \dir -> do
   where
     tmpDir = "./"
 #else
-runRemote = error "SGE support was not turned on."
+runRemote = error "DRMAA support was not turned on."
 #endif
