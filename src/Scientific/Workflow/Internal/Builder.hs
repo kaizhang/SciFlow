@@ -7,13 +7,21 @@
 
 module Scientific.Workflow.Internal.Builder
     ( node
+    , node'
+    , nodeS
     , nodeP
+    , nodeP'
+    , nodePS
+    , nodeSharedP
+    , nodeSharedP'
+    , nodeSharedPS
     , link
     , (~>)
     , path
     , buildWorkflow
     , buildWorkflowPart
     , mkDAG
+    , mkProc
     ) where
 
 import Control.Monad.Identity (runIdentity)
@@ -53,8 +61,30 @@ node :: ToExpQ q
 node pid fn setAttr = modify $ _1 %~ (newNode:)
   where
     attr = execState setAttr defaultAttribute
-    newNode = Node pid [| mkProc pid $ liftProcFunction $(toExpQ fn) |] attr
+    newNode = Node pid [| mkProc pid (liftIO . $(toExpQ fn)) |] attr
 {-# INLINE node #-}
+
+node' :: ToExpQ q
+      => PID                  -- ^ node id
+      -> q                    -- ^ function
+      -> State Attribute ()   -- ^ Attribues
+      -> Builder ()
+node' pid fn setAttr = modify $ _1 %~ (newNode:)
+  where
+    attr = execState setAttr defaultAttribute
+    newNode = Node pid [| mkProc pid (return . $(toExpQ fn)) |] attr
+{-# INLINE node' #-}
+
+nodeS :: ToExpQ q
+       => PID                  -- ^ node id
+       -> q                    -- ^ function
+       -> State Attribute ()   -- ^ Attribues
+       -> Builder ()
+nodeS pid fn setAttr = modify $ _1 %~ (newNode:)
+  where
+    attr = execState setAttr defaultAttribute
+    newNode = Node pid [| mkProc pid $(toExpQ fn) |] attr
+{-# INLINE nodeS #-}
 
 -- | Declare a computational node. The function must have the signature:
 -- Input Function: (DBData a, DBData b) => a -> m b
@@ -69,13 +99,82 @@ nodeP n pid fn setAttr = modify $ _1 %~ (newNode:)
   where
     attr = execState setAttr defaultAttribute
     newNode = Node pid funcExp attr
-    funcExp' = [| liftProcFunction $(toExpQ fn) |]
-    funcExp = do
-        e <- funcExp'
-        if argIsContextData e
-            then [| mkProcListNWithContext n pid $(funcExp') |]
-            else [| mkProcListN n pid $(funcExp') |]
+    funcExp = [| mkProcListN n pid (liftIO . $(toExpQ fn)) |]
 {-# INLINE nodeP #-}
+
+-- | Declare a computational node. The function must have the signature:
+-- Input Function: (DBData a, DBData b) => a -> m b
+-- Result: [a] -> m [b]
+nodeP' :: ToExpQ q
+      => Int                  -- ^ batch size for a single job
+      -> PID                  -- ^ node id
+      -> q                    -- ^ function
+      -> State Attribute ()   -- ^ Attribues
+      -> Builder ()
+nodeP' n pid fn setAttr = modify $ _1 %~ (newNode:)
+  where
+    attr = execState setAttr defaultAttribute
+    newNode = Node pid funcExp attr
+    funcExp = [| mkProcListN n pid (return . $(toExpQ fn)) |]
+{-# INLINE nodeP' #-}
+
+nodePS :: ToExpQ q
+      => Int                  -- ^ batch size for a single job
+      -> PID                  -- ^ node id
+      -> q                    -- ^ function
+      -> State Attribute ()   -- ^ Attribues
+      -> Builder ()
+nodePS n pid fn setAttr = modify $ _1 %~ (newNode:)
+  where
+    attr = execState setAttr defaultAttribute
+    newNode = Node pid funcExp attr
+    funcExp = [| mkProcListN n pid $(toExpQ fn) |]
+{-# INLINE nodePS #-}
+
+-- | Declare a computational node. The function must have the signature:
+-- Input Function: (DBData a, DBData b) => a -> m b
+-- Result: [a] -> m [b]
+nodeSharedP :: ToExpQ q
+      => Int                  -- ^ batch size for a single job
+      -> PID                  -- ^ node id
+      -> q                    -- ^ function
+      -> State Attribute ()   -- ^ Attribues
+      -> Builder ()
+nodeSharedP n pid fn setAttr = modify $ _1 %~ (newNode:)
+  where
+    attr = execState setAttr defaultAttribute
+    newNode = Node pid funcExp attr
+    funcExp = [| mkProcListNWithContext n pid (liftIO . $(toExpQ fn)) |]
+{-# INLINE nodeSharedP #-}
+
+-- | Declare a computational node. The function must have the signature:
+-- Input Function: (DBData a, DBData b) => a -> m b
+-- Result: [a] -> m [b]
+nodeSharedP' :: ToExpQ q
+      => Int                  -- ^ batch size for a single job
+      -> PID                  -- ^ node id
+      -> q                    -- ^ function
+      -> State Attribute ()   -- ^ Attribues
+      -> Builder ()
+nodeSharedP' n pid fn setAttr = modify $ _1 %~ (newNode:)
+  where
+    attr = execState setAttr defaultAttribute
+    newNode = Node pid funcExp attr
+    funcExp = [| mkProcListNWithContext n pid (return . $(toExpQ fn)) |]
+{-# INLINE nodeSharedP' #-}
+
+nodeSharedPS :: ToExpQ q
+      => Int                  -- ^ batch size for a single job
+      -> PID                  -- ^ node id
+      -> q                    -- ^ function
+      -> State Attribute ()   -- ^ Attribues
+      -> Builder ()
+nodeSharedPS n pid fn setAttr = modify $ _1 %~ (newNode:)
+  where
+    attr = execState setAttr defaultAttribute
+    newNode = Node pid funcExp attr
+    funcExp = [| mkProcListNWithContext n pid $(toExpQ fn) |]
+{-# INLINE nodeSharedPS #-}
 
 -- | many-to-one generalized link function
 link :: [PID] -> PID -> Builder ()
@@ -184,14 +283,6 @@ mkWorkflow workflowName dag = do
         e0 = [| (pure. pure) $(conE (tupleDataName $ length sources)) |]
         g acc x = [| ((<*>) . fmap (<*>)) $acc $ fmap Parallel $(backTrack x) |]
 {-# INLINE mkWorkflow #-}
-
--- | TODO: Need more work.
-argIsContextData :: Exp -> Bool
-argIsContextData e = case e of
-    LamE [ConP conName _] _ -> getName conName == "ContextData"
-    _ -> False
-  where
-    getName x = snd $ T.breakOnEnd "." $ T.pack $ show x
 
 mkProc :: (DBData a, DBData b, ToJSON config)
        => PID -> (a -> (ProcState config) b) -> (Processor config a b)

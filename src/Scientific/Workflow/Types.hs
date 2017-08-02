@@ -4,6 +4,8 @@
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Scientific.Workflow.Types
     ( WorkflowDB(..)
@@ -25,7 +27,6 @@ module Scientific.Workflow.Types
     , defaultRunOpt
     , DBData(..)
     , Parallel(..)
-    , ProcFunction(..)
     ) where
 
 import           Control.Concurrent.Async.Lifted            (concurrently)
@@ -175,12 +176,3 @@ instance Applicative (Parallel config) where
         (\(f, a) -> f a) <$> concurrently fs as
 
 instance S.Serialize (Gr (PID, Attribute) Int)
-
-class ProcFunction m config where
-    liftProcFunction :: (a -> m b) -> (a -> (ProcState config) b)
-
-instance ProcFunction IO config where
-    liftProcFunction fn = liftIO . fn
-
-instance ProcFunction (ProcState config) config where
-    liftProcFunction = id
