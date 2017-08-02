@@ -16,8 +16,10 @@ import qualified Data.Map                       as M
 import           Data.Maybe                     (fromJust)
 import qualified Data.Set                       as S
 import           Data.Tuple                     (swap)
-import           Data.Yaml                      (decodeFile)
+import           Data.Yaml                      (decode, FromJSON)
 import           Text.Printf                    (printf)
+import Data.Default.Class (Default(..))
+import qualified Data.ByteString.Char8 as B
 
 import           Scientific.Workflow.Internal.Builder
 import           Scientific.Workflow.Internal.Builder.Types
@@ -25,7 +27,8 @@ import           Scientific.Workflow.Internal.DB
 import           Scientific.Workflow.Types
 import           Scientific.Workflow.Internal.Utils
 
-runWorkflow :: Workflow -> RunOpt -> IO ()
+runWorkflow :: (Default config, FromJSON config)
+            => Workflow config -> RunOpt -> IO ()
 runWorkflow (Workflow gr pids wf) opts =
     bracket (openDB $ database opts) closeDB $ \db -> do
         ks <- S.fromList <$> getKeys db
@@ -60,9 +63,9 @@ runWorkflow (Workflow gr pids wf) opts =
         _ <- forkIO $ replicateM_ (nThread opts) $ putMVar para ()
 
         env <- case configuration opts of
-            Nothing -> return M.empty
-            Just fl -> do
-                r <- decodeFile fl
+            [] -> return def
+            fls -> do
+                r <- decode . B.unlines <$> mapM B.readFile fls
                 case r of
                     Nothing -> error "fail to parse configuration file"
                     Just x -> return x

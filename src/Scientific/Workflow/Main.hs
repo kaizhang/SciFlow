@@ -19,9 +19,12 @@ import           Data.Semigroup                    ((<>))
 import           Data.Serialize                    (encode)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy.IO                 as T
+import Data.Maybe (fromMaybe)
+import Data.Yaml (FromJSON)
+import Data.Default.Class (Default)
 
-#ifdef DRMAA
-import           DRMAA                             (withSession)
+#ifdef DRMAA_ENABLEd
+import DRMAA (withSession)
 #endif
 
 import           Language.Haskell.TH
@@ -49,7 +52,7 @@ data CMD = Run GlobalOpts Int Bool (Maybe [String])
 
 data GlobalOpts = GlobalOpts
     { dbPath     :: FilePath
-    , configFile :: Maybe FilePath
+    , configFile :: Maybe [FilePath]
     }
 
 globalParser :: Parser GlobalOpts
@@ -58,7 +61,7 @@ globalParser = GlobalOpts
                ( long "db-path"
               <> value "sciflow.db"
               <> metavar "DB_PATH" )
-           <*> (optional . strOption)
+           <*> (optional . option (splitOn "," <$> str))
                ( long "config"
               <> metavar "CONFIG_PATH" )
 
@@ -74,12 +77,12 @@ runParser = Run
     <*> switch
         ( long "remote"
        <> help "Submit jobs to remote machines.")
-    <*> (optional . option (maybeReader (Just . splitOn ",")))
+    <*> (optional . option (splitOn "," <$> str))
         ( long "select"
        <> metavar "SELECTED"
        <> help "Run only selected nodes.")
 runExe initialize (Run opts n r s) wf
-#ifdef DRMAA
+#ifdef DRMAA_ENABLEd
     | r = initialize $ withSession $ runWorkflow wf runOpts
 #else
     | r = initialize $ runWorkflow wf runOpts
@@ -90,7 +93,7 @@ runExe initialize (Run opts n r s) wf
         { database = dbPath opts
         , runOnRemote = True
         , nThread = n
-        , configuration = configFile opts
+        , configuration = fromMaybe [] $ configFile opts
         , selected = fmap (map T.pack) s }
 runExe _ _ _ = undefined
 {-# INLINE runExe #-}
@@ -110,7 +113,7 @@ catExe (Cat opts pid) wf = runWorkflow wf defaultRunOpt
     { database = dbPath opts
     , nThread = 10
     , runMode = Review $ T.pack pid
-    , configuration = configFile opts }
+    , configuration = fromMaybe [] $ configFile opts }
 catExe _ _ = undefined
 {-# INLINE catExe #-}
 
@@ -125,7 +128,7 @@ writeExe (Write opts pid input) wf = runWorkflow wf defaultRunOpt
     { database = dbPath opts
     , nThread = 10
     , runMode = Replace (T.pack pid) input
-    , configuration = configFile opts }
+    , configuration = fromMaybe [] $ configFile opts }
 writeExe _ _ = undefined
 {-# INLINE writeExe #-}
 
@@ -195,14 +198,15 @@ callExe (Call opts pid inputFl outputFl) wf = runWorkflow wf defaultRunOpt
     { database = dbPath opts
     , nThread = 10
     , runMode = Slave (T.pack pid) inputFl outputFl
-    , configuration = configFile opts }
+    , configuration = fromMaybe [] $ configFile opts }
 callExe _ _ = undefined
 {-# INLINE callExe #-}
 
 
 
-mainFunc :: (IO () -> IO ()) -- initialization function
-         -> Gr (PID, Attribute) Int -> Workflow
+mainFunc :: (Default config, FromJSON config)
+         => (IO () -> IO ()) -- initialization function
+         -> Gr (PID, Attribute) Int -> Workflow config
          -> String  -- program header
          -> IO ()
 mainFunc initialize dag wf h = execParser opts >>= execute

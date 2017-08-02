@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Scientific.Workflow.Types
     ( WorkflowDB(..)
@@ -18,9 +19,6 @@ module Scientific.Workflow.Types
     , remote
     , config
     , getConfig
-    , getConfigMaybe
-    , getConfig'
-    , getConfigMaybe'
     , Processor
     , RunMode(..)
     , RunOpt(..)
@@ -103,40 +101,31 @@ data SpecialMode = Skip        -- ^ The node will not be executed
                                         -- save results to the output file. This is
                                         -- used in remote mode.
 
-data WorkflowState = WorkflowState
+data WorkflowState config = WorkflowState
     { _db              :: WorkflowDB
     , _procStatus      :: M.Map PID (MVar NodeState, Attribute)
     , _procParaControl :: MVar () -- ^ Concurrency controller
     , _remote          :: Bool    -- ^ Global remote switch
-    , _config          :: M.Map T.Text T.Text    -- ^ Workflow configuration. This
-                                                 -- is used to store environmental
-                                                 -- variables.
+    , _config          :: config  -- ^ Workflow configuration. This
+                                  -- is used to store environmental
+                                  -- variables.
     }
 
 makeLenses ''WorkflowState
 
-type ProcState b = StateT WorkflowState (ExceptT (PID, SomeException) IO) b
-type Processor a b = a -> ProcState b
+type ProcState config = StateT (WorkflowState config) (ExceptT (PID, SomeException) IO)
+type Processor config a b = a -> (ProcState config) b
 
-getConfigMaybe :: T.Text -> ProcState (Maybe T.Text)
-getConfigMaybe key = do
-    st <- get
-    return $ (st^.config) ^.at key
-
-getConfig :: T.Text -> ProcState T.Text
-getConfig x = fmap (fromMaybe errMsg) $ getConfigMaybe x
-  where
-    errMsg = error $ "The Key " ++ show x ++ " doesn't exist!"
-
-getConfig' :: T.Text -> ProcState String
-getConfig' = fmap T.unpack . getConfig
-
-getConfigMaybe' :: T.Text -> ProcState (Maybe String)
-getConfigMaybe' = (fmap.fmap) T.unpack . getConfigMaybe
+getConfig :: (ProcState config) config
+getConfig = (^.config) <$> get
+{-# INLINE getConfig #-}
 
 -- | A Workflow is a stateful function
-data Workflow = Workflow (Gr PID Int) (M.Map T.Text Attribute)
-                         (Processor () ())
+data Workflow config = Workflow
+    { _worflow_dag       :: Gr PID Int
+    , _worflow_pidToAttr :: M.Map T.Text Attribute
+    , _workflow          :: Processor config () ()
+    }
 
 -- | Options
 data RunOpt = RunOpt
@@ -144,7 +133,7 @@ data RunOpt = RunOpt
     , nThread       :: Int      -- ^ number of concurrent processes
     , runOnRemote   :: Bool
     , runMode       :: RunMode
-    , configuration :: Maybe FilePath
+    , configuration :: [FilePath]
     , selected      :: Maybe [PID]  -- ^ Should run only selected nodes
     }
 
@@ -154,7 +143,7 @@ defaultRunOpt = RunOpt
     , nThread  = 1
     , runOnRemote = False
     , runMode = Master
-    , configuration = Nothing
+    , configuration = []
     , selected = Nothing
     }
 
@@ -175,23 +164,23 @@ instance (T.Lift a, T.Lift b) => T.Lift (Gr a b) where
 
 
 -- | Auxiliary type for concurrency support.
-newtype Parallel a = Parallel { runParallel :: ProcState a}
+newtype Parallel config r = Parallel { runParallel :: (ProcState config) r}
 
-instance Functor Parallel where
+instance Functor (Parallel config) where
     fmap f (Parallel a) = Parallel $ f <$> a
 
-instance Applicative Parallel where
+instance Applicative (Parallel config) where
     pure = Parallel . pure
     Parallel fs <*> Parallel as = Parallel $
         (\(f, a) -> f a) <$> concurrently fs as
 
 instance S.Serialize (Gr (PID, Attribute) Int)
 
-class ProcFunction m where
-    liftProcFunction :: (a -> m b) -> (a -> ProcState b)
+class ProcFunction m config where
+    liftProcFunction :: (a -> m b) -> (a -> (ProcState config) b)
 
-instance ProcFunction IO where
+instance ProcFunction IO config where
     liftProcFunction fn = liftIO . fn
 
-instance ProcFunction (StateT WorkflowState (ExceptT (PID, SomeException) IO)) where
+instance ProcFunction (ProcState config) config where
     liftProcFunction = id

@@ -38,7 +38,7 @@ library
     Paths_SciFlow
 
   if flag(drmaa)
-    CPP-Options: -DDRMAA
+    CPP-Options: -DDRMAA_ENABLED
     build-depends: drmaa >=0.2.0
 
   build-depends:
@@ -49,6 +49,7 @@ library
     , cereal
     , cereal-text
     , directory
+    , data-default-class
     , exceptions
     , executable-path
     , fgl

@@ -24,9 +24,9 @@ import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
 import qualified Data.Text           as T
 import Data.List.Split (chunksOf)
+import Data.Yaml (ToJSON)
 import Data.Graph.Inductive.Graph ( mkGraph, lab, labNodes, outdeg, nmap
                                   , lpre, labnfilter, nfilter, gmap, suc )
-import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.List (sortBy, foldl')
 import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.ByteString as B
@@ -40,7 +40,7 @@ import Control.Monad.Catch (try)
 import Scientific.Workflow.Types
 import Scientific.Workflow.Internal.Builder.Types
 import Scientific.Workflow.Internal.DB
-import Scientific.Workflow.Internal.Utils (warnMsg, logMsg, runRemote, defaultRemoteOpts, RemoteOpts(..))
+import Scientific.Workflow.Internal.Utils (warnMsg, logMsg, runRemote, RemoteOpts(..))
 
 -- | Declare a computational node.
 -- Input Function: (DBData a, DBData b) => a -> m b, where m = IO or ProcState
@@ -60,7 +60,7 @@ node pid fn setAttr = modify $ _1 %~ (newNode:)
 -- Input Function: (DBData a, DBData b) => a -> m b
 -- Result: [a] -> m [b]
 nodeP :: ToExpQ q
-      => Int
+      => Int                  -- ^ batch size for a single job
       -> PID                  -- ^ node id
       -> q                    -- ^ function
       -> State Attribute ()   -- ^ Attribues
@@ -193,28 +193,35 @@ argIsContextData e = case e of
   where
     getName x = snd $ T.breakOnEnd "." $ T.pack $ show x
 
-mkProc :: (DBData a, DBData b)
-       => PID -> (a -> ProcState b) -> (Processor a b)
+mkProc :: (DBData a, DBData b, ToJSON config)
+       => PID -> (a -> (ProcState config) b) -> (Processor config a b)
 mkProc = mkProcWith (return, runIdentity)
 {-# INLINE mkProc #-}
 
-mkProcListN :: (DBData [a], DBData [b])
-            => Int -> PID -> (a -> ProcState b) -> (Processor [a] [b])
+mkProcListN :: (DBData [a], DBData [b], ToJSON config)
+            => Int
+            -> PID
+            -> (a -> (ProcState config) b)
+            -> (Processor config [a] [b])
 mkProcListN n pid f = mkProcWith (chunksOf n, concat) pid $
-    (mapM :: (a -> ProcState b) -> [a] -> ProcState [b]) f
+    mapM f
+    -- (mapM :: (a -> m b) -> [a] -> m [b]) f
 {-# INLINE mkProcListN #-}
 
-mkProcListNWithContext :: (DBData (ContextData c [a]), DBData [b])
-                       => Int -> PID -> (ContextData c a -> ProcState b)
-                       -> (Processor (ContextData c [a]) [b])
+mkProcListNWithContext :: (DBData (ContextData c [a]), DBData [b], ToJSON config)
+                       => Int -> PID
+                       -> (ContextData c a -> (ProcState config) b)
+                       -> (Processor config (ContextData c [a]) [b])
 mkProcListNWithContext n pid f = mkProcWith (toChunks, concat) pid f'
   where
     f' (ContextData c xs) = mapM f $ zipWith ContextData (repeat c) xs
     toChunks (ContextData c xs) = zipWith ContextData (repeat c) $ chunksOf n xs
 {-# INLINE mkProcListNWithContext #-}
 
-mkProcWith :: (Traversable t, DBData a, DBData b)
-           => (a -> t a, t b -> b) -> PID -> (a -> ProcState b) -> (Processor a b)
+mkProcWith :: (Traversable t, DBData a, DBData b, ToJSON config)
+           => (a -> t a, t b -> b) -> PID
+           -> (a -> (ProcState config) b)
+           -> (Processor config a b)
 mkProcWith (box, unbox) pid f = \input -> do
     wfState <- get
     let (pSt, attr) = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
@@ -231,7 +238,7 @@ mkProcWith (box, unbox) pid f = \input -> do
             liftIO $ logMsg $ printf "%s: running..." pid
 
             let sendToRemote = fromMaybe (wfState^.remote) (attr^.submitToRemote)
-                remoteOpts = defaultRemoteOpts
+                remoteOpts = RemoteOpts
                     { extraParams = attr^.remoteParam
                     , environment = wfState^.config
                     }
@@ -259,9 +266,10 @@ mkProcWith (box, unbox) pid f = \input -> do
 
 handleSpecialMode :: (DBData a, DBData b)
                   => SpecialMode
-                  -> WorkflowState
-                  -> MVar NodeState -> PID -> (a -> ProcState b)
-                  -> ProcState b
+                  -> WorkflowState config
+                  -> MVar NodeState -> PID
+                  -> (a -> (ProcState config) b)
+                  -> (ProcState config) b
 handleSpecialMode mode wfState nodeSt pid fn = case mode of
     Skip -> liftIO $ putMVar nodeSt (Special Skip) >> return undefined
 
