@@ -10,16 +10,16 @@ import Text.Printf (printf)
 
 import Scientific.Workflow
 
-f :: [Int] -> IO [Int]
-f = return . map (+1)
+f :: Int -> Int
+f = (+1)
 
 -- builder monad
 builder :: Builder ()
 builder = do
-    node "step0" [| return . const [1..10] :: () -> IO [Int] |] $ return ()
-    node "step1" 'f $ batch .= 2 >> label .= "run on remote with batch size 2"
-    node "step2" 'f $ batch .= 4 >> label .= "run on remote with batch size 4"
-    node "step3" 'f $ return ()
+    nodeS "step0" [| return . const [1..10] :: Processor () () [Int] |] $ return ()
+    nodeP' 2 "step1" 'f $ label .= "run on remote with batch size 2"
+    nodeP' 4 "step2" 'f $ label .= "run on remote with batch size 4"
+    node' "step3" [| map f |] $ return ()
 
     ["step0"] ~> "step1"
     ["step0"] ~> "step2"

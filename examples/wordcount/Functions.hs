@@ -1,17 +1,20 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell   #-}
 module Functions
     (builder) where
 
-import Control.Lens ((^.), (.=))
-import qualified Data.Text as T
-import Shelly hiding (FilePath)
-import Text.Printf (printf)
+import           Control.Lens           ((.=), (^.))
+import           Control.Monad.IO.Class (liftIO)
+import qualified Data.Text              as T
+import           Shelly                 hiding (FilePath)
+import           Text.Printf            (printf)
 
-import Scientific.Workflow
+import           Scientific.Workflow
+import           Scientific.Workflow.Internal.Builder
+import           Scientific.Workflow.Types
 
-create :: () -> IO FilePath
-create () = do
+create :: Processor () () FilePath
+create () = liftIO $ do
     writeFile "hello.txt" "hello world"
     return "hello.txt"
 
@@ -39,7 +42,7 @@ cleanUp (toBeRemoved, fl) = do
 -- builder monad
 builder :: Builder ()
 builder = do
-    node "step0" 'create $ label .= "write something to a file"
+    nodeS "step0" 'create $ label .= "write something to a file"
     node "step1" 'countWords $ label .= "word count"
     node "step2" 'countChars $ label .= "character count"
     node "step3" 'output $ label .= "print"

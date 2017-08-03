@@ -5,28 +5,29 @@ module Functions
 
 import Control.Lens ((^.), (.=))
 import qualified Data.Text as T
-import Shelly hiding (FilePath)
 import Text.Printf (printf)
+import Control.Monad.IO.Class (liftIO)
 
 import Scientific.Workflow
 
-f :: Int -> IO Int
-f = return . (+1)
+f :: Int -> IO ()
+f i = error $ show i
+
+f2 :: Int -> ProcState ()
+f2 i = do
+    x <- getConfig' "text"
+    liftIO $ putStrLn x
+
+f3 :: () -> IO Int
+f3 _ = return 10
 
 -- builder monad
 builder :: Builder ()
 builder = do
     node "step0" [| return . const 0 :: () -> IO Int |] $ return ()
-    node "step1" 'f $ return ()
-    node "step2" 'f $ return ()
-    node "step3" 'f $ return ()
-    node "step4" 'f $ return ()
-    node "step5" 'f $ return ()
-    node "step6" 'f $ return ()
+    node "step1" [| f2 |] $ return ()
+    node "step2" 'f3 $ return ()
+    node "step3" 'f3 $ return ()
 
-    ["step0"] ~> "step1"
-    ["step0"] ~> "step2"
+    path ["step0", "step1", "step2"]
     ["step1"] ~> "step3"
-    ["step1"] ~> "step4"
-    ["step2"] ~> "step5"
-    ["step2"] ~> "step6"

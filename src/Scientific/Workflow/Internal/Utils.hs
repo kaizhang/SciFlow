@@ -1,7 +1,6 @@
 {-# LANGUAGE CPP #-}
-module Scientific.Workflow.Utils
+module Scientific.Workflow.Internal.Utils
     ( RemoteOpts(..)
-    , defaultRemoteOpts
     , runRemote
     , logMsg
     , errorMsg
@@ -9,19 +8,18 @@ module Scientific.Workflow.Utils
     )where
 
 import qualified Data.ByteString.Char8         as B
-import qualified Data.Map                      as M
 import qualified Data.Text                     as T
 import           Data.Time                     (defaultTimeLocale, formatTime,
                                                 getZonedTime)
-import           Data.Yaml                     (encode)
+import           Data.Yaml                     (ToJSON, encode)
 import           Rainbow
 import           System.IO
 
-import           Scientific.Workflow.Types     (DBData (..))
+import           Scientific.Workflow.Internal.DB (DBData (..))
+
+#ifdef DRMAA_ENABLED
 import           System.Environment.Executable (getExecutablePath)
 import           System.IO.Temp                (withTempDirectory)
-
-#ifdef SGE
 import           DRMAA                         (DrmaaAttribute (..),
                                                 defaultDrmaaConfig, drmaaRun)
 #endif
@@ -56,19 +54,14 @@ warnMsg txt = do
             [prefix, chunk txt & fore red]
     B.hPutStrLn stderr msg
 
-data RemoteOpts = RemoteOpts
+data RemoteOpts config = RemoteOpts
     { extraParams :: String
-    , environment :: M.Map T.Text T.Text
+    , environment :: config
     }
 
-defaultRemoteOpts :: RemoteOpts
-defaultRemoteOpts = RemoteOpts
-    { extraParams = ""
-    , environment = M.empty
-    }
-
-runRemote :: (DBData a, DBData b) => RemoteOpts -> T.Text -> a -> IO b
-#ifdef SGE
+runRemote :: (DBData a, DBData b, ToJSON config)
+          => RemoteOpts config -> T.Text -> a -> IO b
+#ifdef DRMAA_ENABLED
 runRemote opts pid input = withTempDirectory tmpDir "drmaa.tmp" $ \dir -> do
     let inputFl = dir ++ "/drmaa_input.tmp"
         outputFl = dir ++ "/drmaa_output.tmp"
@@ -86,5 +79,5 @@ runRemote opts pid input = withTempDirectory tmpDir "drmaa.tmp" $ \dir -> do
   where
     tmpDir = "./"
 #else
-runRemote = error "SGE support was not turned on."
+runRemote = error "DRMAA support was not turned on."
 #endif
