@@ -15,6 +15,8 @@ import           Data.Yaml                         (FromJSON (..), ToJSON (..))
 import           Data.Aeson.Types (genericParseJSON, genericToEncoding, defaultOptions)
 import           GHC.Generics                      (Generic)
 import           Language.Haskell.TH               (ExpQ, Name, varE)
+import Instances.TH.Lift ()
+import Language.Haskell.TH.Lift (deriveLift)
 
 -- | A computation node.
 data Node = Node
@@ -40,9 +42,30 @@ data Attribute = Attribute
     , _note           :: Text      -- ^ Long description
     , _submitToRemote :: Maybe Bool  -- ^ Overwrite the global option
     , _remoteParam    :: String
+    , _functionConfig :: FunctionConfig
     } deriving (Generic)
 
+data FunctionConfig = FunctionConfig ParallelMode FunctionType deriving (Generic)
+
+data ParallelMode = None
+                  | Standard Int
+                  | ShareData Int
+                  deriving (Generic)
+
+data FunctionType = Pure
+                  | IOAction
+                  | Stateful
+                  deriving (Generic)
+
 instance Serialize Attribute
+instance Serialize FunctionConfig
+instance Serialize ParallelMode
+instance Serialize FunctionType
+
+deriveLift ''FunctionConfig
+deriveLift ''ParallelMode
+deriveLift ''FunctionType
+deriveLift ''Attribute
 
 makeLenses 'Attribute
 
@@ -52,6 +75,7 @@ defaultAttribute = Attribute
     , _note = ""
     , _submitToRemote = Nothing
     , _remoteParam = ""
+    , _functionConfig = FunctionConfig None IOAction
     }
 
 type AttributeSetter = State Attribute ()

@@ -63,6 +63,7 @@ library
     , sqlite-simple
     , split
     , th-lift
+    , th-lift-instances
     , time
     , temporary
     , text

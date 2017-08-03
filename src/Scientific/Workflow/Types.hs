@@ -153,16 +153,8 @@ data RunMode = Master                       -- ^ Run as the master process
              | Review PID                   -- ^ Review the info stored in a node
              | Replace PID FilePath         -- ^ Replace the info stored in a node
 
-
-T.deriveLift ''M.Map
-T.deriveLift ''Attribute
-
-instance T.Lift T.Text where
-  lift t = [| T.pack $(T.lift $ T.unpack t) |]
-
 instance (T.Lift a, T.Lift b) => T.Lift (Gr a b) where
   lift gr = [| uncurry mkGraph $(T.lift (labNodes gr, labEdges gr)) |]
-
 
 -- | Auxiliary type for concurrency support.
 newtype Parallel config r = Parallel { runParallel :: (ProcState config) r}
