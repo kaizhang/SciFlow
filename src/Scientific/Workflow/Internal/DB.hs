@@ -1,4 +1,6 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Scientific.Workflow.Internal.DB
     ( openDB
     , closeDB
@@ -10,13 +12,39 @@ module Scientific.Workflow.Internal.DB
     , delRecord
     , isFinished
     , getKeys
+    , WorkflowDB(..)
+    , DBData (..)
     ) where
 
-import qualified Data.ByteString           as B
-import qualified Data.Text                 as T
+import qualified Data.ByteString        as B
+import           Data.Maybe             (fromJust)
+import qualified Data.Serialize         as S
+import qualified Data.Text              as T
+import           Data.Yaml              (FromJSON (..), ToJSON (..), decode,
+                                         encode)
 import           Database.SQLite.Simple
-import           Scientific.Workflow.Types
-import           Text.Printf               (printf)
+import           Text.Printf            (printf)
+
+-- | An abstract type representing the database used to store states of workflow
+newtype WorkflowDB  = WorkflowDB Connection
+
+-- | 'DBData' type class is used for data serialization.
+class DBData a where
+    serialize :: a -> B.ByteString
+    deserialize :: B.ByteString -> a
+    showYaml :: a -> B.ByteString
+    readYaml :: B.ByteString -> a
+
+instance (FromJSON a, ToJSON a, S.Serialize a) => DBData a where
+    serialize = S.encode
+    deserialize = fromEither . S.decode
+      where
+        fromEither (Right x) = x
+        fromEither _         = error "decode failed"
+    showYaml = encode
+    readYaml = fromJust . decode
+
+type PID = T.Text
 
 dbTableName :: String
 dbTableName = "SciFlowDB"

@@ -3,21 +3,17 @@ module Scientific.Workflow.Visualize
     ( drawWorkflow
     ) where
 
-import           Control.Arrow                     (second)
-import           Control.Lens
-import qualified Data.ByteString                   as B
-import           Data.Graph.Inductive.Graph
-import           Data.Graph.Inductive.PatriciaTree (Gr)
-import qualified Data.GraphViz                     as G
-import qualified Data.GraphViz.Attributes.Complete as G
-import qualified Data.GraphViz.Attributes.HTML     as H
-import qualified Data.GraphViz.Printing            as G
-import           Data.List                         (intersperse)
-import qualified Data.Text                         as T
-import qualified Data.Text.Lazy                    as TL
+import           Control.Lens                               ((^.))
+import           Data.Graph.Inductive.PatriciaTree          (Gr)
+import qualified Data.GraphViz                              as G
+import qualified Data.GraphViz.Attributes.Complete          as G
+import qualified Data.GraphViz.Attributes.HTML              as H
+import qualified Data.GraphViz.Printing                     as G
+import qualified Data.Text                                  as T
+import qualified Data.Text.Lazy                             as TL
 
-import           Scientific.Workflow.Types
 import           Scientific.Workflow.Internal.Builder.Types (Attribute, note)
+import           Scientific.Workflow.Types
 
 -- | Print the computation graph
 drawWorkflow :: Gr (PID, Attribute) Int -> TL.Text
@@ -49,8 +45,8 @@ drawWorkflow dag = G.renderDot . G.toDot $ G.graphToDot param dag
             ]
         , G.fmtNode = fmtnode
         }
-
-toLine x = H.Cells [H.LabelCell [H.Align H.HLeft] $ H.Text [H.Str $ TL.fromStrict x]]
+    toLine x = H.Cells [H.LabelCell [H.Align H.HLeft] $
+        H.Text [H.Str $ TL.fromStrict x]]
 
 wrap :: Int -> T.Text -> [T.Text]
 wrap limit = concatMap (combine . foldl f (0, [], []) . T.words) . T.lines

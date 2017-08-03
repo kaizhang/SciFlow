@@ -27,6 +27,7 @@ library
   exposed-modules:
     Scientific.Workflow
     Scientific.Workflow.Main
+    Scientific.Workflow.Main.Options
     Scientific.Workflow.Types
     Scientific.Workflow.Visualize
     Scientific.Workflow.Internal.Builder
@@ -59,7 +60,6 @@ library
     , mtl
     , optparse-applicative >=0.13.0.0
     , rainbow
-    , shelly
     , sqlite-simple
     , split
     , th-lift

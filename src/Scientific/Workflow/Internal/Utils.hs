@@ -11,15 +11,15 @@ import qualified Data.ByteString.Char8         as B
 import qualified Data.Text                     as T
 import           Data.Time                     (defaultTimeLocale, formatTime,
                                                 getZonedTime)
-import           Data.Yaml                     (encode, ToJSON)
+import           Data.Yaml                     (ToJSON, encode)
 import           Rainbow
 import           System.IO
 
-import           Scientific.Workflow.Types     (DBData (..))
-import           System.Environment.Executable (getExecutablePath)
-import           System.IO.Temp                (withTempDirectory)
+import           Scientific.Workflow.Internal.DB (DBData (..))
 
 #ifdef DRMAA_ENABLED
+import           System.Environment.Executable (getExecutablePath)
+import           System.IO.Temp                (withTempDirectory)
 import           DRMAA                         (DrmaaAttribute (..),
                                                 defaultDrmaaConfig, drmaaRun)
 #endif

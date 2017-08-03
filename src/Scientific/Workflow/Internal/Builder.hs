@@ -58,9 +58,9 @@ nodeWith :: ToExpQ q
          -> q                    -- ^ function
          -> State Attribute ()   -- ^ Attribues
          -> Builder ()
-nodeWith config pid fn setAttr = modify $ _1 %~ (newNode:)
+nodeWith conf pid fn setAttr = modify $ _1 %~ (newNode:)
   where
-    attr = execState setAttr defaultAttribute{_functionConfig = config}
+    attr = execState setAttr defaultAttribute{_functionConfig = conf}
     newNode = Node pid (toExpQ fn) attr
 {-# INLINE nodeWith #-}
 
@@ -150,12 +150,12 @@ buildWorkflowPart :: FilePath   -- ^ Path to the db
                   -> String     -- ^ Name of the workflow
                   -> Builder () -- ^ Builder
                   -> Q [Dec]
-buildWorkflowPart db wfName b = do
-    st <- runIO $ getWorkflowState db
+buildWorkflowPart dbPath wfName b = do
+    st <- runIO $ getWorkflowState dbPath
     mkWorkflow wfName $ trimDAG st $ mkDAG b
   where
-    getWorkflowState dir = do
-        db <- openDB dir
+    getWorkflowState fl = do
+        db <- openDB fl
         ks <- getKeys db
         return $ M.fromList $ zip ks $ repeat Success
 
@@ -200,14 +200,10 @@ trimDAG st dag = gmap revise gr
 -- Lastly, a function table will be created with the name $name$_function_table.
 mkWorkflow :: String   -- name
            -> DAG -> Q [Dec]
-mkWorkflow workflowName dag = do
-    let expq = connect sinks [| const $ return () |]
-    -- define the workflow
-    workflows <-
-        [d| $(varP $ mkName workflowName) = Workflow dag' pids $expq |]
-
-    return workflows
+mkWorkflow workflowName dag =
+    [d| $(varP $ mkName workflowName) = Workflow dag' pids $workflowMain |]
   where
+    workflowMain = connect sinks [| const $ return () |]
     dag' = nmap _nodePid dag
     computeNodes = snd $ unzip $ labNodes dag
     pids = M.fromList $ map (\Node{..} -> (_nodePid, _nodeAttr)) computeNodes
@@ -273,7 +269,7 @@ mkProcWith (box, unbox) pid f = \input -> do
         (Fail ex) -> liftIO (putMVar pSt pStValue) >> lift (throwE (pid, ex))
         Success -> liftIO $ do
             putMVar pSt pStValue
-            readData pid $ wfState^.db
+            readData pid $ wfState^.database
         Scheduled -> do
             _ <- liftIO $ takeMVar $ wfState^.procParaControl
 
@@ -296,7 +292,7 @@ mkProcWith (box, unbox) pid f = \input -> do
                         warnMsg $ printf "%s: Failed!" pid
                     lift (throwE (pid, ex))
                 Right r -> liftIO $ do
-                    saveData pid r $ wfState^.db
+                    saveData pid r $ wfState^.database
                     putMVar pSt Success
                     _ <- forkIO $ putMVar (wfState^.procParaControl) ()
                     logMsg $ printf "%s: Finished." pid
@@ -324,7 +320,7 @@ handleSpecialMode mode wfState nodeSt pid fn = case mode of
 
     -- Read data stored in this node
     FetchData -> liftIO $ do
-        r <- readData pid $ wfState^.db
+        r <- readData pid $ wfState^.database
         B.putStr $ showYaml r
         putMVar nodeSt $ Special Skip
         return r
@@ -334,7 +330,7 @@ handleSpecialMode mode wfState nodeSt pid fn = case mode of
         c <- liftIO $ B.readFile inputData
         r <- return (readYaml c) `asTypeOf` fn undefined
         liftIO $ do
-            updateData pid r $ wfState^.db
+            updateData pid r $ wfState^.database
             putMVar nodeSt $ Special Skip
             return r
 {-# INLINE handleSpecialMode #-}

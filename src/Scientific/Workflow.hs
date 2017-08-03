@@ -30,7 +30,7 @@ import           Scientific.Workflow.Internal.Utils
 runWorkflow :: (Default config, FromJSON config)
             => Workflow config -> RunOpt -> IO ()
 runWorkflow (Workflow gr pids wf) opts =
-    bracket (openDB $ database opts) closeDB $ \db -> do
+    bracket (openDB $ dbFile opts) closeDB $ \db -> do
         ks <- S.fromList <$> getKeys db
         let selection = case selected opts of
                 Nothing -> Nothing

@@ -1,21 +1,20 @@
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE TemplateHaskell      #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module Scientific.Workflow.Types
-    ( WorkflowDB(..)
-    , Workflow(..)
+    ( Workflow(..)
     , PID
     , NodeState(..)
     , SpecialMode(..)
     , ProcState
     , WorkflowState(..)
-    , db
+    , database
     , procStatus
     , procParaControl
     , remote
@@ -25,64 +24,26 @@ module Scientific.Workflow.Types
     , RunMode(..)
     , RunOpt(..)
     , defaultRunOpt
-    , DBData(..)
     , Parallel(..)
     ) where
 
 import           Control.Concurrent.Async.Lifted            (concurrently)
 import           Control.Concurrent.MVar                    (MVar)
 import           Control.Exception                          (SomeException)
-import           Control.Lens                               (at, makeLenses,
-                                                             (^.))
-import           Control.Monad.IO.Class                     (liftIO)
-import           Control.Monad.State                        (State, StateT, get)
+import           Control.Lens                               (makeLenses, (^.))
+import           Control.Monad.State                        (StateT, get)
 import           Control.Monad.Trans.Except                 (ExceptT)
-import           Data.Aeson.Types
-import qualified Data.ByteString                            as B
 import           Data.Graph.Inductive.Graph                 (labEdges, labNodes,
                                                              mkGraph)
 import           Data.Graph.Inductive.PatriciaTree          (Gr)
 import qualified Data.Map                                   as M
-import           Data.Maybe                                 (fromJust,
-                                                             fromMaybe)
 import qualified Data.Serialize                             as S
 import           Data.Serialize.Text                        ()
 import qualified Data.Text                                  as T
-import           Data.Yaml                                  (FromJSON (..),
-                                                             ToJSON (..),
-                                                             decode, encode)
-import           Database.SQLite.Simple                     (Connection)
-import           GHC.Generics                               (Generic)
-import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift                   as T
 
 import           Scientific.Workflow.Internal.Builder.Types (Attribute)
-
-class DataStore s where
-    openStore :: FilePath -> IO s
-    closeStore :: s -> IO ()
-    writeData :: DBData r => PID -> r -> s -> IO ()
-    readData :: DBData r => PID -> s -> IO r
-
--- | 'DBData' type class is used for data serialization.
-class DBData a where
-    serialize :: a -> B.ByteString
-    deserialize :: B.ByteString -> a
-    showYaml :: a -> B.ByteString
-    readYaml :: B.ByteString -> a
-
-instance (FromJSON a, ToJSON a, S.Serialize a) => DBData a where
-    serialize = S.encode
-    deserialize = fromEither . S.decode
-      where
-        fromEither (Right x) = x
-        fromEither _         = error "decode failed"
-    showYaml = encode
-    readYaml = fromJust . decode
-
-
--- | An abstract type representing the database used to store states of workflow
-newtype WorkflowDB  = WorkflowDB Connection
+import           Scientific.Workflow.Internal.DB            (WorkflowDB (..))
 
 -- | The id of a node
 type PID = T.Text
@@ -103,7 +64,7 @@ data SpecialMode = Skip        -- ^ The node will not be executed
                                         -- used in remote mode.
 
 data WorkflowState config = WorkflowState
-    { _db              :: WorkflowDB
+    { _database        :: WorkflowDB
     , _procStatus      :: M.Map PID (MVar NodeState, Attribute)
     , _procParaControl :: MVar () -- ^ Concurrency controller
     , _remote          :: Bool    -- ^ Global remote switch
@@ -130,7 +91,7 @@ data Workflow config = Workflow
 
 -- | Options
 data RunOpt = RunOpt
-    { database      :: FilePath
+    { dbFile        :: FilePath
     , nThread       :: Int      -- ^ number of concurrent processes
     , runOnRemote   :: Bool
     , runMode       :: RunMode
@@ -140,7 +101,7 @@ data RunOpt = RunOpt
 
 defaultRunOpt :: RunOpt
 defaultRunOpt = RunOpt
-    { database = "sciflow.db"
+    { dbFile = "sciflow.db"
     , nThread  = 1
     , runOnRemote = False
     , runMode = Master
