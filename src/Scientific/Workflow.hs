@@ -9,9 +9,9 @@ import           Control.Concurrent                         (forkIO)
 import           Control.Concurrent.MVar
 import           Control.Exception                          (bracket,
                                                              displayException)
+import           Control.Monad                              (replicateM_)
 import           Control.Monad.Reader                       (runReaderT)
-import           Control.Monad.State
-import           Control.Monad.Trans.Except
+import           Control.Monad.Trans.Except                 (runExceptT)
 import qualified Data.ByteString.Char8                      as B
 import           Data.Default.Class                         (Default (..))
 import           Data.Graph.Inductive.Graph                 (lab, labNodes)
@@ -72,7 +72,7 @@ runWorkflow (Workflow gr pids wf) opts =
                 case r of
                     Nothing -> error "fail to parse configuration file"
                     Just x  -> return x
-        result <- evalStateT (runExceptT $ runReaderT (wf ()) initState) config
+        result <- runReaderT (runExceptT $ runReaderT (wf ()) initState) config
         case result of
             Right _ -> return ()
             Left (pid, ex) -> errorMsg $ printf "\"%s\" failed. The error was: %s."

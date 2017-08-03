@@ -30,7 +30,6 @@ import           Control.Concurrent.Async.Lifted            (concurrently)
 import           Control.Concurrent.MVar                    (MVar)
 import           Control.Exception                          (SomeException)
 import           Control.Lens                               (makeLenses)
-import           Control.Monad.State                        (StateT)
 import           Control.Monad.Reader (ReaderT)
 import           Control.Monad.Trans.Except                 (ExceptT)
 import           Data.Graph.Inductive.Graph                 (labEdges, labNodes,
@@ -74,7 +73,7 @@ makeLenses ''WorkflowState
 
 type ProcState config = ReaderT WorkflowState (
     ExceptT (PID, SomeException) (WorkflowConfig config) )
-type WorkflowConfig config = StateT config IO
+type WorkflowConfig config = ReaderT config IO
 type Processor config a b = a -> (ProcState config) b
 
 -- | A Workflow is a stateful function

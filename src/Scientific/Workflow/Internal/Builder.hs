@@ -29,7 +29,7 @@ import Control.Monad.Identity (runIdentity)
 import Data.Monoid ((<>))
 import Control.Lens ((^.), (%~), _1, _2, _3, (&))
 import Control.Monad.Trans.Except (throwE)
-import Control.Monad.State (lift, liftIO, (>=>), foldM_, execState, modify, State, get)
+import Control.Monad.State (lift, liftIO, (>=>), foldM_, execState, modify, State)
 import Control.Monad.Reader (ask)
 import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
@@ -276,7 +276,7 @@ mkProcWith (box, unbox) pid f = \input -> do
 
             liftIO $ logMsg $ printf "%s: running..." pid
 
-            config <- lift $ lift get
+            config <- lift $ lift ask
             let sendToRemote = fromMaybe (wfState^.remote) (attr^.submitToRemote)
                 remoteOpts = RemoteOpts
                     { extraParams = attr^.remoteParam
