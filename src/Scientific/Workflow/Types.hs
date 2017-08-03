@@ -18,20 +18,20 @@ module Scientific.Workflow.Types
     , procStatus
     , procParaControl
     , remote
-    , config
-    , getConfig
     , Processor
     , RunMode(..)
     , RunOpt(..)
     , defaultRunOpt
     , Parallel(..)
+    , WorkflowConfig
     ) where
 
 import           Control.Concurrent.Async.Lifted            (concurrently)
 import           Control.Concurrent.MVar                    (MVar)
 import           Control.Exception                          (SomeException)
-import           Control.Lens                               (makeLenses, (^.))
-import           Control.Monad.State                        (StateT, get)
+import           Control.Lens                               (makeLenses)
+import           Control.Monad.State                        (StateT)
+import           Control.Monad.Reader (ReaderT)
 import           Control.Monad.Trans.Except                 (ExceptT)
 import           Data.Graph.Inductive.Graph                 (labEdges, labNodes,
                                                              mkGraph)
@@ -63,24 +63,19 @@ data SpecialMode = Skip        -- ^ The node will not be executed
                                         -- save results to the output file. This is
                                         -- used in remote mode.
 
-data WorkflowState config = WorkflowState
+data WorkflowState = WorkflowState
     { _database        :: WorkflowDB
     , _procStatus      :: M.Map PID (MVar NodeState, Attribute)
     , _procParaControl :: MVar () -- ^ Concurrency controller
     , _remote          :: Bool    -- ^ Global remote switch
-    , _config          :: config  -- ^ Workflow configuration. This
-                                  -- is used to store environmental
-                                  -- variables.
     }
 
 makeLenses ''WorkflowState
 
-type ProcState config = StateT (WorkflowState config) (ExceptT (PID, SomeException) IO)
+type ProcState config = ReaderT WorkflowState (
+    ExceptT (PID, SomeException) (WorkflowConfig config) )
+type WorkflowConfig config = StateT config IO
 type Processor config a b = a -> (ProcState config) b
-
-getConfig :: (ProcState config) config
-getConfig = (^.config) <$> get
-{-# INLINE getConfig #-}
 
 -- | A Workflow is a stateful function
 data Workflow config = Workflow

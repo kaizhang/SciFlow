@@ -29,7 +29,8 @@ import Control.Monad.Identity (runIdentity)
 import Data.Monoid ((<>))
 import Control.Lens ((^.), (%~), _1, _2, _3, (&))
 import Control.Monad.Trans.Except (throwE)
-import           Control.Monad.State (lift, liftIO, (>=>), foldM_, execState, modify, State, get)
+import Control.Monad.State (lift, liftIO, (>=>), foldM_, execState, modify, State, get)
+import Control.Monad.Reader (ask)
 import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
 import qualified Data.Text           as T
@@ -216,7 +217,7 @@ mkWorkflow workflowName dag =
         fun = case _nodeAttr^.functionConfig of
             FunctionConfig _ Pure -> [| return . $_nodeFunction |]
             FunctionConfig _ IOAction -> [| liftIO . $_nodeFunction |]
-            FunctionConfig _ Stateful -> _nodeFunction
+            FunctionConfig _ Stateful -> [| (lift . lift) . $_nodeFunction |]
         mkP = case _nodeAttr^.functionConfig of
             FunctionConfig None _ -> [| mkProc _nodePid |]
             FunctionConfig (Standard n) _ -> [| mkProcListN n _nodePid |]
@@ -261,7 +262,7 @@ mkProcWith :: (Traversable t, DBData a, DBData b, ToJSON config)
            -> (a -> (ProcState config) b)
            -> (Processor config a b)
 mkProcWith (box, unbox) pid f = \input -> do
-    wfState <- get
+    wfState <- ask
     let (pSt, attr) = M.findWithDefault (error "Impossible") pid $ wfState^.procStatus
 
     pStValue <- liftIO $ takeMVar pSt
@@ -275,10 +276,11 @@ mkProcWith (box, unbox) pid f = \input -> do
 
             liftIO $ logMsg $ printf "%s: running..." pid
 
+            config <- lift $ lift get
             let sendToRemote = fromMaybe (wfState^.remote) (attr^.submitToRemote)
                 remoteOpts = RemoteOpts
                     { extraParams = attr^.remoteParam
-                    , environment = wfState^.config
+                    , environment = config
                     }
                 input' = box input
             result <- try $ unbox <$> if sendToRemote
@@ -304,7 +306,7 @@ mkProcWith (box, unbox) pid f = \input -> do
 
 handleSpecialMode :: (DBData a, DBData b)
                   => SpecialMode
-                  -> WorkflowState config
+                  -> WorkflowState
                   -> MVar NodeState -> PID
                   -> (a -> (ProcState config) b)
                   -> (ProcState config) b

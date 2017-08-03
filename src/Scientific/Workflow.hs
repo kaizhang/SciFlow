@@ -5,27 +5,29 @@ module Scientific.Workflow
     , module Scientific.Workflow.Types
     ) where
 
-import           Control.Concurrent             (forkIO)
+import           Control.Concurrent                         (forkIO)
 import           Control.Concurrent.MVar
-import           Control.Exception              (bracket, displayException)
+import           Control.Exception                          (bracket,
+                                                             displayException)
+import           Control.Monad.Reader                       (runReaderT)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
-import           Data.Graph.Inductive.Graph     (lab, labNodes)
-import           Data.Graph.Inductive.Query.DFS (rdfs)
-import qualified Data.Map                       as M
-import           Data.Maybe                     (fromJust)
-import qualified Data.Set                       as S
-import           Data.Tuple                     (swap)
-import           Data.Yaml                      (decode, FromJSON)
-import           Text.Printf                    (printf)
-import Data.Default.Class (Default(..))
-import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Char8                      as B
+import           Data.Default.Class                         (Default (..))
+import           Data.Graph.Inductive.Graph                 (lab, labNodes)
+import           Data.Graph.Inductive.Query.DFS             (rdfs)
+import qualified Data.Map                                   as M
+import           Data.Maybe                                 (fromJust)
+import qualified Data.Set                                   as S
+import           Data.Tuple                                 (swap)
+import           Data.Yaml                                  (FromJSON, decode)
+import           Text.Printf                                (printf)
 
 import           Scientific.Workflow.Internal.Builder
 import           Scientific.Workflow.Internal.Builder.Types
 import           Scientific.Workflow.Internal.DB
-import           Scientific.Workflow.Types
 import           Scientific.Workflow.Internal.Utils
+import           Scientific.Workflow.Types
 
 runWorkflow :: (Default config, FromJSON config)
             => Workflow config -> RunOpt -> IO ()
@@ -62,17 +64,15 @@ runWorkflow (Workflow gr pids wf) opts =
         para <- newEmptyMVar
         _ <- forkIO $ replicateM_ (nThread opts) $ putMVar para ()
 
-        env <- case configuration opts of
+        let initState = WorkflowState db pidStateMap para (runOnRemote opts)
+        config <- case configuration opts of
             [] -> return def
             fls -> do
                 r <- decode . B.unlines <$> mapM B.readFile fls
                 case r of
                     Nothing -> error "fail to parse configuration file"
-                    Just x -> return x
-
-        let initState = WorkflowState db pidStateMap para (runOnRemote opts) env
-
-        result <- runExceptT $ evalStateT (wf ()) initState
+                    Just x  -> return x
+        result <- evalStateT (runExceptT $ runReaderT (wf ()) initState) config
         case result of
             Right _ -> return ()
             Left (pid, ex) -> errorMsg $ printf "\"%s\" failed. The error was: %s."
