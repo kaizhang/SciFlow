@@ -21,6 +21,14 @@ import           Data.Maybe                                 (fromJust)
 import qualified Data.Set                                   as S
 import           Data.Tuple                                 (swap)
 import           Data.Yaml                                  (FromJSON, decode)
+import           Network.Socket                             (Family (..),
+                                                             SockAddr (..),
+                                                             Socket,
+                                                             SocketType (Stream),
+                                                             close, connect,
+                                                             defaultProtocol,
+                                                             isConnected,
+                                                             socket)
 import           Text.Printf                                (printf)
 
 import           Scientific.Workflow.Internal.Builder
@@ -32,7 +40,7 @@ import           Scientific.Workflow.Types
 runWorkflow :: (Default config, FromJSON config)
             => Workflow config -> RunOpt -> IO ()
 runWorkflow (Workflow gr pids wf) opts =
-    bracket (openDB $ dbFile opts) closeDB $ \db -> do
+    bracket (mkConnection opts) cleanUp $ \(db, logS) -> do
         ks <- S.fromList <$> getKeys db
         let selection = case selected opts of
                 Nothing -> Nothing
@@ -61,10 +69,12 @@ runWorkflow (Workflow gr pids wf) opts =
                     v <- if pid == i then newMVar (Special $ WriteData input) else newMVar $ Special Skip
                     return (v, attr)
 
-        para <- newEmptyMVar
-        _ <- forkIO $ replicateM_ (nThread opts) $ putMVar para ()
+        availableThreads <- newEmptyMVar
+        _ <- forkIO $ replicateM_ (nThread opts) $ putMVar availableThreads ()
 
-        let initState = WorkflowState db pidStateMap para (runOnRemote opts)
+        let initState = WorkflowState db pidStateMap availableThreads
+                (runOnRemote opts) logS
+
         config <- case configuration opts of
             [] -> return def
             fls -> do
@@ -72,8 +82,31 @@ runWorkflow (Workflow gr pids wf) opts =
                 case r of
                     Nothing -> error "fail to parse configuration file"
                     Just x  -> return x
+
         result <- runReaderT (runExceptT $ runReaderT (wf ()) initState) config
         case result of
             Right _ -> return ()
-            Left (pid, ex) -> errorMsg $ printf "\"%s\" failed. The error was: %s."
+            Left (pid, ex) -> sendLog logS $ Error $ printf "\"%s\" failed. The error was: %s."
                 pid (displayException ex)
+
+mkConnection :: RunOpt -> IO (WorkflowDB, Maybe Socket)
+mkConnection opts = do
+    db <- openDB $ dbFile opts
+    logS <- case logServerAddr opts of
+        Just addr -> do
+            sock <- socket AF_UNIX Stream defaultProtocol
+            connect sock $ SockAddrUnix addr
+            connected <- isConnected sock
+            if connected
+                then return $ Just sock
+                else error "Could not connect to socket!"
+        Nothing -> return Nothing
+    return (db, logS)
+
+cleanUp :: (WorkflowDB, Maybe Socket) -> IO ()
+cleanUp (db, sock) = do
+    sendLog sock Exit
+    case sock of
+        Just s -> close s
+        _      -> return ()
+    closeDB db

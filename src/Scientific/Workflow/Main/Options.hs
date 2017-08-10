@@ -30,7 +30,7 @@ argsParser h = info (helper <*> parser) $ fullDesc <> header h
             fullDesc <> progDesc "Do not call this directly.")
      )
 
-data CMD = Run GlobalOpts Int Bool (Maybe [String])
+data CMD = Run GlobalOpts Int Bool (Maybe [String]) (Maybe String)
          | View Bool
          | Cat GlobalOpts String
          | Write GlobalOpts String FilePath
@@ -69,6 +69,13 @@ runParser = Run
         ( long "select"
        <> metavar "SELECTED"
        <> help "Run only selected nodes.")
+    <*> (optional . fmap f . strOption)
+        ( long "log-server"
+       <> metavar "Log_SERVER" )
+  where
+    f x = case x of
+        ('\\' : '0' : rest) -> '\0' : rest
+        x' -> x'
 
 viewParser :: Parser CMD
 viewParser = View <$> switch (long "raw")

@@ -7,16 +7,18 @@ module Scientific.Workflow.Internal.Builder.Types where
 
 import           Control.Lens                      (makeLenses)
 import           Control.Monad.State               (State)
+import           Data.Aeson.Types                  (defaultOptions,
+                                                    genericParseJSON,
+                                                    genericToEncoding)
 import           Data.Graph.Inductive.PatriciaTree (Gr)
 import           Data.Serialize                    (Serialize)
 import           Data.Serialize.Text               ()
 import           Data.Text                         (Text)
 import           Data.Yaml                         (FromJSON (..), ToJSON (..))
-import           Data.Aeson.Types (genericParseJSON, genericToEncoding, defaultOptions)
 import           GHC.Generics                      (Generic)
+import           Instances.TH.Lift                 ()
 import           Language.Haskell.TH               (ExpQ, Name, varE)
-import Instances.TH.Lift ()
-import Language.Haskell.TH.Lift (deriveLift)
+import           Language.Haskell.TH.Lift          (deriveLift)
 
 -- | A computation node.
 data Node = Node
@@ -36,25 +38,29 @@ type EdgeOrd = Int
 
 type Builder = State ([Node], [Edge])
 
--- | Node attribute
+-- | Node attributes.
 data Attribute = Attribute
     { _label          :: Text      -- ^ Short description
     , _note           :: Text      -- ^ Long description
     , _submitToRemote :: Maybe Bool  -- ^ Overwrite the global option
-    , _remoteParam    :: String
-    , _functionConfig :: FunctionConfig
+    , _remoteParam    :: String     -- ^ Parameters for to remote execution
+    , _functionConfig :: FunctionConfig  -- ^ Usually not being used directly
     } deriving (Generic)
 
+-- | The type of node function
 data FunctionConfig = FunctionConfig ParallelMode FunctionType deriving (Generic)
 
-data ParallelMode = None
-                  | Standard Int
-                  | ShareData Int
+data ParallelMode = None            -- ^ No parallelism.
+                  | Standard Int    -- ^ Turn input @a@ into @[a]@ and process
+                                    -- them in parallel.
+                  | ShareData Int   -- ^ Assume the input is @ContextData d a@,
+                                    -- where @d@ is shared and @a@ becomes @[a]@.
                   deriving (Generic)
 
-data FunctionType = Pure
-                  | IOAction
-                  | Stateful
+data FunctionType = Pure       -- ^ The function is pure, i.e., @a -> b@.
+                  | IOAction   -- ^ A IO function, i.e., @a -> IO b@.
+                  | Stateful   -- ^ A function that has access to configuration,
+                               -- i.e., @a -> WorkflowConfig config b@.
                   deriving (Generic)
 
 instance Serialize Attribute
@@ -92,7 +98,7 @@ instance ToExpQ Name where
 instance ToExpQ ExpQ where
     toExpQ = id
 
--- | Data
+-- | Data and its environment.
 data ContextData context dat = ContextData
     { _context :: context
     , _data    :: dat

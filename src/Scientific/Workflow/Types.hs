@@ -18,6 +18,7 @@ module Scientific.Workflow.Types
     , procStatus
     , procParaControl
     , remote
+    , logServer
     , Processor
     , RunMode(..)
     , RunOpt(..)
@@ -30,7 +31,7 @@ import           Control.Concurrent.Async.Lifted            (concurrently)
 import           Control.Concurrent.MVar                    (MVar)
 import           Control.Exception                          (SomeException)
 import           Control.Lens                               (makeLenses)
-import           Control.Monad.Reader (ReaderT)
+import           Control.Monad.Reader                       (ReaderT)
 import           Control.Monad.Trans.Except                 (ExceptT)
 import           Data.Graph.Inductive.Graph                 (labEdges, labNodes,
                                                              mkGraph)
@@ -40,6 +41,7 @@ import qualified Data.Serialize                             as S
 import           Data.Serialize.Text                        ()
 import qualified Data.Text                                  as T
 import qualified Language.Haskell.TH.Lift                   as T
+import           Network.Socket                             (Socket)
 
 import           Scientific.Workflow.Internal.Builder.Types (Attribute)
 import           Scientific.Workflow.Internal.DB            (WorkflowDB (..))
@@ -48,25 +50,26 @@ import           Scientific.Workflow.Internal.DB            (WorkflowDB (..))
 type PID = T.Text
 
 -- | The result of a computation node
-data NodeState = Success                -- ^ The node has been executed
-               | Fail SomeException     -- ^ The node failed to finish
-               | Scheduled              -- ^ The node will be executed
-               | Special SpecialMode    -- ^ Indicate the workflow is currently
-                                        -- running under special mode
+data NodeState = Success               -- ^ The node has been executed
+               | Fail SomeException    -- ^ The node failed to finish
+               | Scheduled             -- ^ The node will be executed
+               | Special SpecialMode   -- ^ Indicate the workflow is currently
+                                       -- running under special mode
 
-data SpecialMode = Skip        -- ^ The node will not be executed
-                 | FetchData   -- ^ Simply read the saved data from database
+data SpecialMode = Skip                -- ^ The node will not be executed
+                 | FetchData           -- ^ Simply read the saved data from database
                  | WriteData FilePath  -- ^ Read the result from the input file
-                                     -- and save it to database.
+                                       -- and save it to database.
                  | EXE FilePath FilePath  -- ^ Read input from the input file and
-                                        -- save results to the output file. This is
-                                        -- used in remote mode.
+                                          -- save results to the output file. This is
+                                          -- used in remote mode.
 
 data WorkflowState = WorkflowState
     { _database        :: WorkflowDB
     , _procStatus      :: M.Map PID (MVar NodeState, Attribute)
     , _procParaControl :: MVar () -- ^ Concurrency controller
     , _remote          :: Bool    -- ^ Global remote switch
+    , _logServer       :: Maybe Socket  -- ^ Server for logging
     }
 
 makeLenses ''WorkflowState
@@ -91,6 +94,7 @@ data RunOpt = RunOpt
     , runMode       :: RunMode
     , configuration :: [FilePath]
     , selected      :: Maybe [PID]  -- ^ Should run only selected nodes
+    , logServerAddr :: Maybe String
     }
 
 defaultRunOpt :: RunOpt
@@ -101,6 +105,7 @@ defaultRunOpt = RunOpt
     , runMode = Master
     , configuration = []
     , selected = Nothing
+    , logServerAddr = Nothing
     }
 
 data RunMode = Master                       -- ^ Run as the master process

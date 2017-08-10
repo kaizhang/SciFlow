@@ -76,13 +76,14 @@ mainFunc :: (Default config, FromJSON config)
 mainFunc initialize dag wf h = execParser (argsParser h) >>= execute
   where
     execute cmd = case cmd of
-        Run opts n r s ->
+        Run opts n r s logS ->
             let runOpts = defaultRunOpt
                     { dbFile = dbPath opts
                     , runOnRemote = True
                     , nThread = n
                     , configuration = fromMaybe [] $ configFile opts
-                    , selected = fmap (map T.pack) s }
+                    , selected = fmap (map T.pack) s
+                    , logServerAddr = logS }
             in if r
 #ifdef DRMAA_ENABLED
                 then initialize $ withSession $ runWorkflow wf runOpts
