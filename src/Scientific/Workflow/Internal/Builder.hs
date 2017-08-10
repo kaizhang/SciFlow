@@ -29,7 +29,7 @@ import Control.Monad.Identity (runIdentity)
 import Data.Monoid ((<>))
 import Control.Lens ((^.), (%~), _1, _2, _3, (&))
 import Control.Monad.Trans.Except (throwE)
-import Control.Monad.State (lift, liftIO, (>=>), foldM_, execState, modify, State, get)
+import Control.Monad.State (lift, liftIO, (>=>), foldM_, execState, modify, State)
 import Control.Monad.Reader (ask)
 import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
@@ -43,7 +43,6 @@ import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.ByteString as B
 import Data.Ord (comparing)
 import qualified Data.Map as M
-import Text.Printf (printf)
 import Control.Concurrent.Async.Lifted (mapConcurrently)
 import           Language.Haskell.TH
 import Control.Monad.Catch (try)
@@ -51,7 +50,7 @@ import Control.Monad.Catch (try)
 import Scientific.Workflow.Types
 import Scientific.Workflow.Internal.Builder.Types
 import Scientific.Workflow.Internal.DB
-import Scientific.Workflow.Internal.Utils (warnMsg, logMsg, runRemote, RemoteOpts(..))
+import Scientific.Workflow.Internal.Utils (sendLog, Log(..), runRemote, RemoteOpts(..))
 
 nodeWith :: ToExpQ q
          => FunctionConfig
@@ -242,9 +241,7 @@ mkProcListN :: (DBData [a], DBData [b], ToJSON config)
             -> PID
             -> (a -> (ProcState config) b)
             -> (Processor config [a] [b])
-mkProcListN n pid f = mkProcWith (chunksOf n, concat) pid $
-    mapM f
-    -- (mapM :: (a -> m b) -> [a] -> m [b]) f
+mkProcListN n pid f = mkProcWith (chunksOf n, concat) pid $ mapM f
 {-# INLINE mkProcListN #-}
 
 mkProcListNWithContext :: (DBData (ContextData c [a]), DBData [b], ToJSON config)
@@ -274,9 +271,9 @@ mkProcWith (box, unbox) pid f = \input -> do
         Scheduled -> do
             _ <- liftIO $ takeMVar $ wfState^.procParaControl
 
-            liftIO $ logMsg $ printf "%s: running..." pid
+            liftIO $ sendLog (wfState^.logServer) $ Running pid
 
-            config <- lift $ lift get
+            config <- lift $ lift ask
             let sendToRemote = fromMaybe (wfState^.remote) (attr^.submitToRemote)
                 remoteOpts = RemoteOpts
                     { extraParams = attr^.remoteParam
@@ -291,17 +288,16 @@ mkProcWith (box, unbox) pid f = \input -> do
                     _ <- liftIO $ do
                         putMVar pSt $ Fail ex
                         _ <- forkIO $ putMVar (wfState^.procParaControl) ()
-                        warnMsg $ printf "%s: Failed!" pid
+                        sendLog (wfState^.logServer) $ Warn pid "Failed!"
                     lift (throwE (pid, ex))
                 Right r -> liftIO $ do
                     saveData pid r $ wfState^.database
                     putMVar pSt Success
                     _ <- forkIO $ putMVar (wfState^.procParaControl) ()
-                    logMsg $ printf "%s: Finished." pid
+                    sendLog (wfState^.logServer) $ Complete pid
                     return r
 
         Special mode -> handleSpecialMode mode wfState pSt pid f
-
 {-# INLINE mkProcWith #-}
 
 handleSpecialMode :: (DBData a, DBData b)

@@ -21,13 +21,13 @@ import qualified Data.Text                         as T
 import qualified Data.Text.Lazy.IO                 as T
 import           Data.Yaml                         (FromJSON)
 
-#ifdef DRMAA_ENABLEd
+#ifdef DRMAA_ENABLED
 import           DRMAA                             (withSession)
 #endif
 
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Lift          as T
-import           Options.Applicative               hiding (runParser)
+import           Options.Applicative
 import           Text.Printf                       (printf)
 
 import           Data.Version                      (showVersion)
@@ -76,15 +76,16 @@ mainFunc :: (Default config, FromJSON config)
 mainFunc initialize dag wf h = execParser (argsParser h) >>= execute
   where
     execute cmd = case cmd of
-        Run opts n r s ->
+        Run opts n r s logS ->
             let runOpts = defaultRunOpt
                     { dbFile = dbPath opts
                     , runOnRemote = True
                     , nThread = n
                     , configuration = fromMaybe [] $ configFile opts
-                    , selected = fmap (map T.pack) s }
+                    , selected = fmap (map T.pack) s
+                    , logServerAddr = logS }
             in if r
-#ifdef DRMAA_ENABLEd
+#ifdef DRMAA_ENABLED
                 then initialize $ withSession $ runWorkflow wf runOpts
 #else
                 then initialize $ runWorkflow wf runOpts

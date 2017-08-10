@@ -58,6 +58,7 @@ library
     , lens >=4.0
     , lifted-async
     , mtl
+    , network
     , optparse-applicative >=0.13.0.0
     , rainbow
     , sqlite-simple

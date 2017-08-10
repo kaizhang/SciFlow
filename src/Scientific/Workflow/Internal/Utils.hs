@@ -1,34 +1,60 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP           #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Scientific.Workflow.Internal.Utils
     ( RemoteOpts(..)
+    , Log(..)
     , runRemote
-    , logMsg
-    , errorMsg
-    , warnMsg
+    , sendLog
     )where
 
-import qualified Data.ByteString.Char8         as B
-import qualified Data.Text                     as T
-import           Data.Time                     (defaultTimeLocale, formatTime,
-                                                getZonedTime)
-import           Data.Yaml                     (ToJSON, encode)
+import qualified Data.ByteString.Char8           as B
+import qualified Data.Serialize                  as S
+import           Data.Serialize.Text             ()
+import qualified Data.Text                       as T
+import           Data.Time                       (defaultTimeLocale, formatTime,
+                                                  getZonedTime)
+import           Data.Yaml                       (ToJSON, encode)
+import           GHC.Generics                    (Generic)
+import           Network.Socket                  (Socket)
+import           Network.Socket.ByteString       (sendAll)
 import           Rainbow
 import           System.IO
 
 import           Scientific.Workflow.Internal.DB (DBData (..))
 
 #ifdef DRMAA_ENABLED
-import           System.Environment.Executable (getExecutablePath)
-import           System.IO.Temp                (withTempDirectory)
-import           DRMAA                         (DrmaaAttribute (..),
-                                                defaultDrmaaConfig, drmaaRun)
+import           DRMAA                           (DrmaaAttribute (..),
+                                                  defaultDrmaaConfig, drmaaRun)
+import           System.Environment.Executable   (getExecutablePath)
+import           System.IO.Temp                  (withTempDirectory)
 #endif
+
+data Log = Running T.Text
+         | Complete T.Text
+         | Warn T.Text String
+         | Error String
+         | Exit
+         deriving (Generic, Show)
+
+instance S.Serialize Log
 
 getTime :: IO String
 getTime = do
     t <- getZonedTime
     return $ formatTime defaultTimeLocale "[%m-%d %H:%M]" t
 {-# INLINE getTime #-}
+
+sendLog :: Maybe Socket -> Log -> IO ()
+sendLog sock msg = do
+    case sock of
+        Just s -> sendAll s $ S.encode msg
+        _      -> return ()
+    case msg of
+        Running pid  -> logMsg $ T.unpack pid ++ ": Running..."
+        Complete pid -> logMsg $ T.unpack pid ++ ": Finished!"
+        Warn pid s   -> warnMsg $ T.unpack pid ++ ": " ++ s
+        Error s  -> errorMsg s
+        Exit -> return ()
 
 logMsg :: String -> IO ()
 logMsg txt = do
