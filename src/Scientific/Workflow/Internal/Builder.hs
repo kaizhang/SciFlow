@@ -110,7 +110,7 @@ nodeSharedPS :: ToExpQ q => Int -> PID -> q -> State Attribute () -> Builder ()
 nodeSharedPS n = nodeWith $ FunctionConfig (ShareData n) Stateful
 {-# INLINE nodeSharedPS #-}
 
--- | many-to-one generalized link function
+-- | Many-to-one generalized link function
 link :: [PID] -> PID -> Builder ()
 link xs t = modify $ _2 %~ (zipWith3 Edge xs (repeat t) [0..] ++)
 {-# INLINE link #-}
@@ -120,14 +120,14 @@ link xs t = modify $ _2 %~ (zipWith3 Edge xs (repeat t) [0..] ++)
 (~>) = link
 {-# INLINE (~>) #-}
 
--- | singleton
 path :: [PID] -> Builder ()
 path ns = foldM_ f (head ns) $ tail ns
   where
     f a t = link [a] t >> return t
 {-# INLINE path #-}
 
--- | Add a prefix to ids of nodes for a given builder. "id" becomes "prefix_id".
+-- | Add a prefix to IDs of nodes for a given builder, i.e.,
+-- @id@ becomes @prefix_id@.
 namespace :: T.Text -> Builder () -> Builder ()
 namespace prefix builder = builder >> addPrefix
   where

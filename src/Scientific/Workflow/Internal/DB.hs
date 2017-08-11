@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ConstraintKinds #-}
 module Scientific.Workflow.Internal.DB
     ( openDB
     , closeDB
@@ -13,7 +14,11 @@ module Scientific.Workflow.Internal.DB
     , isFinished
     , getKeys
     , WorkflowDB(..)
-    , DBData (..)
+    , DBData
+    , serialize
+    , deserialize
+    , readYaml
+    , showYaml
     ) where
 
 import qualified Data.ByteString        as B
@@ -28,21 +33,23 @@ import           Text.Printf            (printf)
 -- | An abstract type representing the database used to store states of workflow
 newtype WorkflowDB  = WorkflowDB Connection
 
--- | 'DBData' type class is used for data serialization.
-class DBData a where
-    serialize :: a -> B.ByteString
-    deserialize :: B.ByteString -> a
-    showYaml :: a -> B.ByteString
-    readYaml :: B.ByteString -> a
+-- | @DBData@ constraint is used for data serialization.
+type DBData a = (FromJSON a, ToJSON a, S.Serialize a)
 
-instance (FromJSON a, ToJSON a, S.Serialize a) => DBData a where
-    serialize = S.encode
-    deserialize = fromEither . S.decode
-      where
-        fromEither (Right x) = x
-        fromEither _         = error "decode failed"
-    showYaml = encode
-    readYaml = fromJust . decode
+serialize :: DBData a => a -> B.ByteString
+serialize = S.encode
+
+deserialize :: DBData a => B.ByteString -> a
+deserialize = fromEither . S.decode
+  where
+    fromEither (Right x) = x
+    fromEither _         = error "decode failed"
+
+showYaml :: DBData a => a -> B.ByteString
+showYaml = encode
+
+readYaml :: DBData a => B.ByteString -> a
+readYaml = fromJust . decode
 
 type PID = T.Text
 

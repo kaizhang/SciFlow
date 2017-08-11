@@ -20,7 +20,7 @@ import           Network.Socket.ByteString       (sendAll)
 import           Rainbow
 import           System.IO
 
-import           Scientific.Workflow.Internal.DB (DBData (..))
+import           Scientific.Workflow.Internal.DB
 
 #ifdef DRMAA_ENABLED
 import           DRMAA                           (DrmaaAttribute (..),

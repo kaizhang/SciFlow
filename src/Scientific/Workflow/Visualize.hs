@@ -15,7 +15,7 @@ import qualified Data.Text.Lazy                             as TL
 import           Scientific.Workflow.Internal.Builder.Types (Attribute, note)
 import           Scientific.Workflow.Types
 
--- | Print the computation graph
+-- | Output the computation graph in dot code which can be visualize by Graphviz.
 drawWorkflow :: Gr (PID, Attribute) Int -> TL.Text
 drawWorkflow dag = G.renderDot . G.toDot $ G.graphToDot param dag
   where
