@@ -6,7 +6,7 @@ module Scientific.Workflow.Main.Options
 
 import           Data.List.Split     (splitOn)
 import           Data.Semigroup      ((<>))
-import           Options.Applicative hiding (runParser)
+import           Options.Applicative
 
 argsParser :: String -> ParserInfo CMD
 argsParser h = info (helper <*> parser) $ fullDesc <> header h

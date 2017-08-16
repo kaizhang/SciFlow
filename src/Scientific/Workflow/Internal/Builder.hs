@@ -52,10 +52,10 @@ import Scientific.Workflow.Internal.Builder.Types
 import Scientific.Workflow.Internal.DB
 import Scientific.Workflow.Internal.Utils (sendLog, Log(..), runRemote, RemoteOpts(..))
 
-nodeWith :: ToExpQ q
+nodeWith :: ToExpQ function
          => FunctionConfig
          -> PID                  -- ^ node id
-         -> q                    -- ^ function
+         -> function             -- ^ function
          -> State Attribute ()   -- ^ Attribues
          -> Builder ()
 nodeWith conf pid fn setAttr = modify $ _1 %~ (newNode:)
@@ -64,62 +64,95 @@ nodeWith conf pid fn setAttr = modify $ _1 %~ (newNode:)
     newNode = Node pid (toExpQ fn) attr
 {-# INLINE nodeWith #-}
 
--- | Declare a computational node.
--- Input Function: (DBData a, DBData b) => a -> m b, where m = IO or ProcState
--- Result: a -> ProcState b
-node :: ToExpQ q
-     => PID                  -- ^ node id
-     -> q                    -- ^ function
+-- | Declare an IO computational step.
+node :: ToExpQ fun
+     => PID                  -- ^ Node id
+     -> fun                  -- ^ Template Haskell expression representing
+                             -- functions with type @a -> IO b@.
      -> State Attribute ()   -- ^ Attribues
      -> Builder ()
 node = nodeWith $ FunctionConfig None IOAction
 {-# INLINE node #-}
 
-node' :: ToExpQ q => PID -> q -> State Attribute () -> Builder ()
+-- | Declare a pure computational step.
+node' :: ToExpQ fun
+      => PID
+      -> fun -- ^ Template Haskell expression representing
+             -- functions with type @a -> b@.
+      -> State Attribute ()
+      -> Builder ()
 node' = nodeWith $ FunctionConfig None Pure
 {-# INLINE node' #-}
 
-nodeS :: ToExpQ q => PID -> q -> State Attribute () -> Builder ()
+-- | Declare a stateful computational step.
+nodeS :: ToExpQ fun
+      => PID
+      -> fun  -- ^ Template Haskell expression representing
+              -- functions with type "@a -> 'WorkflowState' st b@".
+      -> State Attribute () -> Builder ()
 nodeS = nodeWith $ FunctionConfig None Stateful
 {-# INLINE nodeS #-}
 
--- | Declare a computational node. The function must have the signature:
--- Input Function: (DBData a, DBData b) => a -> m b
--- Result: [a] -> m [b]
-nodeP :: ToExpQ q => Int -> PID -> q -> State Attribute () -> Builder ()
+-- | Declare an IO and parallel computational step. This will turn functions
+-- with type "@a -> IO b@" into functions with type "@[a] -> IO [b]@". And
+-- @[a]@ will be processed in parallel with provided batch size.
+-- Note: Currently, parallelism is available only when @"--remote"@ flag
+-- is on.
+nodeP :: ToExpQ fun
+      => Int       -- ^ Batch size for parallel execution.
+      -> PID
+      -> fun
+      -> State Attribute () -> Builder ()
 nodeP n = nodeWith $ FunctionConfig (Standard n) IOAction
 {-# INLINE nodeP #-}
 
-nodeP' :: ToExpQ q => Int -> PID -> q -> State Attribute () -> Builder ()
+-- | Same as @'nodeP'@ but work with pure functions.
+nodeP' :: ToExpQ fun => Int -> PID -> fun -> State Attribute () -> Builder ()
 nodeP' n = nodeWith $ FunctionConfig (Standard n) Pure
 {-# INLINE nodeP' #-}
 
-nodePS :: ToExpQ q => Int -> PID -> q -> State Attribute () -> Builder ()
+-- | Same as @'nodeP'@ but work with stateful functions.
+nodePS :: ToExpQ fun => Int -> PID -> fun -> State Attribute () -> Builder ()
 nodePS n = nodeWith $ FunctionConfig (Standard n) Stateful
 {-# INLINE nodePS #-}
 
-nodeSharedP :: ToExpQ q => Int -> PID -> q -> State Attribute () -> Builder ()
+-- | Similar to @'nodeP'@ but work with inputs that are associated with a
+-- shared context. Turn @'ContextData' context a -> 'IO' b@ into
+-- @'ContextData' context [a] -> 'IO' [b]@.
+nodeSharedP :: ToExpQ fun
+            => Int
+            -> PID
+            -> fun   -- ^ Template Haskell expression representing
+                     -- functions with type @'ContextData' context a -> 'IO' b@.
+            -> State Attribute () -> Builder ()
 nodeSharedP n = nodeWith $ FunctionConfig (ShareData n) IOAction
 {-# INLINE nodeSharedP #-}
 
-nodeSharedP' :: ToExpQ q => Int -> PID -> q -> State Attribute () -> Builder ()
+nodeSharedP' :: ToExpQ fun => Int -> PID -> fun -> State Attribute () -> Builder ()
 nodeSharedP' n = nodeWith $ FunctionConfig (ShareData n) Pure
 {-# INLINE nodeSharedP' #-}
 
-nodeSharedPS :: ToExpQ q => Int -> PID -> q -> State Attribute () -> Builder ()
+nodeSharedPS :: ToExpQ fun => Int -> PID -> fun -> State Attribute () -> Builder ()
 nodeSharedPS n = nodeWith $ FunctionConfig (ShareData n) Stateful
 {-# INLINE nodeSharedPS #-}
 
--- | Many-to-one generalized link function
+-- | Declare the dependency between nodes.
+-- Example:
+--
+-- > node' "step1" [| \() -> 1 :: Int |] $ return ()
+-- > node' "step2" [| \() -> 2 :: Int |] $ return ()
+-- > node' "step3" [| \(x, y) -> x * y |] $ return ()
+-- > link ["step1", "step2"] "step3"
 link :: [PID] -> PID -> Builder ()
 link xs t = modify $ _2 %~ (zipWith3 Edge xs (repeat t) [0..] ++)
 {-# INLINE link #-}
 
--- | (~>) = link.
+-- | @(~>) = 'link'@.
 (~>) :: [PID] -> PID -> Builder ()
 (~>) = link
 {-# INLINE (~>) #-}
 
+-- | "@'path' [a, b, c]@" is equivalent to "@'link' a b >> 'link' b c@"
 path :: [PID] -> Builder ()
 path ns = foldM_ f (head ns) $ tail ns
   where
@@ -236,7 +269,7 @@ mkProc :: (DBData a, DBData b, ToJSON config)
 mkProc = mkProcWith (return, runIdentity)
 {-# INLINE mkProc #-}
 
-mkProcListN :: (DBData [a], DBData [b], ToJSON config)
+mkProcListN :: (DBData a, DBData b, ToJSON config)
             => Int
             -> PID
             -> (a -> (ProcState config) b)
@@ -244,7 +277,7 @@ mkProcListN :: (DBData [a], DBData [b], ToJSON config)
 mkProcListN n pid f = mkProcWith (chunksOf n, concat) pid $ mapM f
 {-# INLINE mkProcListN #-}
 
-mkProcListNWithContext :: (DBData (ContextData c [a]), DBData [b], ToJSON config)
+mkProcListNWithContext :: (DBData a, DBData b, DBData c, ToJSON config)
                        => Int -> PID
                        -> (ContextData c a -> (ProcState config) b)
                        -> (Processor config (ContextData c [a]) [b])
