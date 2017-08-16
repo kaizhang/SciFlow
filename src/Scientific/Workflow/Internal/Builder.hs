@@ -88,7 +88,7 @@ node' = nodeWith $ FunctionConfig None Pure
 nodeS :: ToExpQ fun
       => PID
       -> fun  -- ^ Template Haskell expression representing
-              -- functions with type "@a -> 'WorkflowState' st b@".
+              -- functions with type "@a -> 'WorkflowConfig' st b@".
       -> State Attribute () -> Builder ()
 nodeS = nodeWith $ FunctionConfig None Stateful
 {-# INLINE nodeS #-}

@@ -38,7 +38,7 @@ To enable grid compute engine support, you need to have DRMAA C library
 installed and compile the SciFlow with `-f drmaa` flag.
 Use `./main run --remote` to submit jobs to remote machines.
 
-Feature applications
+Featured applications
 --------------------
 
 [Here](https://github.com/Taiji-pipeline)
