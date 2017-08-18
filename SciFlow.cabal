@@ -1,5 +1,5 @@
 name:                SciFlow
-version:             0.6.0
+version:             0.6.1
 synopsis:            Scientific workflow management system
 description:         SciFlow is a DSL for building scientific workflows.
                      Workflows built with SciFlow can be run either on desktop

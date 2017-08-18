@@ -162,8 +162,9 @@ path ns = foldM_ f (head ns) $ tail ns
 -- | Add a prefix to IDs of nodes for a given builder, i.e.,
 -- @id@ becomes @prefix_id@.
 namespace :: T.Text -> Builder () -> Builder ()
-namespace prefix builder = builder >> addPrefix
+namespace prefix builder = modify (st <>)
   where
+    st = execState (builder >> addPrefix) ([], [])
     addPrefix = modify $ \(nodes, edges) ->
         ( map (\x -> x{_nodePid = prefix <> "_" <> _nodePid x}) nodes
         , map (\x -> x{ _edgeFrom = prefix <> "_" <> _edgeFrom x
