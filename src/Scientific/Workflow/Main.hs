@@ -41,7 +41,7 @@ import           Data.Maybe                                 (fromMaybe)
 import           Data.Serialize                             (encode)
 import qualified Data.Text                                  as T
 import qualified Data.Text.Lazy.IO                          as T
-import           Data.Yaml                                  (FromJSON, decode)
+import           Data.Yaml                                  (FromJSON, decodeEither)
 
 #ifdef DRMAA_ENABLED
 import           DRMAA                                      (withSession)
@@ -218,10 +218,10 @@ runWorkflow (Workflow gr pids wf) opts =
         config <- case configuration opts of
             [] -> return def
             fls -> do
-                r <- decode . B.unlines <$> mapM B.readFile fls
+                r <- decodeEither . B.unlines <$> mapM B.readFile fls
                 case r of
-                    Nothing -> error "fail to parse configuration file"
-                    Just x  -> return x
+                    Left err -> error err
+                    Right x  -> return x
 
         result <- runReaderT (runExceptT $ runReaderT (wf ()) initState) config
         case result of
