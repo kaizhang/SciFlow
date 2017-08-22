@@ -58,7 +58,7 @@ library
     , lifted-async
     , mtl
     , network
-    , optparse-applicative >=0.13.0.0
+    , optparse-applicative >=0.14.0.0
     , rainbow
     , sqlite-simple
     , split

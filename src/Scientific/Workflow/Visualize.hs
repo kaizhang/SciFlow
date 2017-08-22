@@ -22,7 +22,7 @@ drawWorkflow dag = G.renderDot . G.toDot $ G.graphToDot param dag
     fmtnode (_, (i, attr)) = [G.Label $ G.HtmlLabel label]
       where
         label = H.Table $ H.HTable (Just []) tableAttr $ header : H.HorizontalRule :
-            map toLine (wrap 45 $ attr^.note)
+            map toLine (wrap 45 $ if T.null (attr^.note) then "Empty" else attr^.note)
         header = H.Cells [H.LabelCell [] $ H.Text
             [ H.Format H.Bold $ [H.Font [H.PointSize 18] [H.Str $ TL.fromStrict i]]
             ]]

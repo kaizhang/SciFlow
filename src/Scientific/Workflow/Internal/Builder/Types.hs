@@ -73,7 +73,7 @@ deriveLift ''ParallelMode
 deriveLift ''FunctionType
 deriveLift ''Attribute
 
-makeLenses 'Attribute
+makeLenses ''Attribute
 
 defaultAttribute :: Attribute
 defaultAttribute = Attribute
