@@ -75,7 +75,7 @@ runParser = Run
   where
     f x = case x of
         ('\\' : '0' : rest) -> '\0' : rest
-        x' -> x'
+        x'                  -> x'
 
 viewParser :: Parser CMD
 viewParser = View <$> switch (long "raw")

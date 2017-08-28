@@ -301,7 +301,7 @@ mkProcWith (box, unbox) pid f = \input -> do
         (Fail ex) -> liftIO (putMVar pSt pStValue) >> lift (throwE (pid, ex))
         Success -> liftIO $ do
             putMVar pSt pStValue
-            readData pid $ wfState^.database
+            fmap deserialize $ readData pid $ wfState^.database
         Scheduled -> do
             _ <- liftIO $ takeMVar $ wfState^.procParaControl
 
@@ -325,7 +325,7 @@ mkProcWith (box, unbox) pid f = \input -> do
                         sendLog (wfState^.logServer) $ Warn pid "Failed!"
                     lift (throwE (pid, ex))
                 Right r -> liftIO $ do
-                    saveData pid r $ wfState^.database
+                    saveData pid (serialize r) $ wfState^.database
                     putMVar pSt Success
                     _ <- forkIO $ putMVar (wfState^.procParaControl) ()
                     sendLog (wfState^.logServer) $ Complete pid
@@ -352,7 +352,7 @@ handleSpecialMode mode wfState nodeSt pid fn = case mode of
 
     -- Read data stored in this node
     FetchData -> liftIO $ do
-        r <- readData pid $ wfState^.database
+        r <- fmap deserialize $ readData pid $ wfState^.database
         B.putStr $ showYaml r
         putMVar nodeSt $ Special Skip
         return r
@@ -362,7 +362,7 @@ handleSpecialMode mode wfState nodeSt pid fn = case mode of
         c <- liftIO $ B.readFile inputData
         r <- return (readYaml c) `asTypeOf` fn undefined
         liftIO $ do
-            updateData pid r $ wfState^.database
+            updateData pid (serialize r) $ wfState^.database
             putMVar nodeSt $ Special Skip
             return r
 {-# INLINE handleSpecialMode #-}
