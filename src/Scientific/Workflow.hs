@@ -68,6 +68,7 @@ module Scientific.Workflow
 
     , ContextData(..)
     , WorkflowConfig
+    , Workflow(..)
     ) where
 
 import           Scientific.Workflow.Internal.Builder

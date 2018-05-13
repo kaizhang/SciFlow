@@ -69,6 +69,7 @@ data MainOpts = MainOpts
                               -- The action should have type: @'IO' () -> 'IO' ()@.
                               -- e.g., some initialization processes.
     , programHeader :: String
+    , workflowConfigType :: Maybe Name    -- ^ The type for workflow config
     }
 
 T.deriveLift ''MainOpts
@@ -77,6 +78,7 @@ defaultMainOpts :: MainOpts
 defaultMainOpts = MainOpts
     { preAction = 'id
     , programHeader = printf "SciFlow-%s" (showVersion version)
+    , workflowConfigType = Nothing
     }
 
 defaultMain :: Builder () -> Q [Dec]
@@ -88,8 +90,12 @@ mainWith opts builder = do
     main_q <- [d| main = mainFunc $(varE $ preAction opts) dag
                     $(varE $ mkName wfName) (programHeader opts)
               |]
-    return $ wf_q ++ main_q
+    return $ wfType ++ wf_q ++ main_q
   where
+    wfType = case workflowConfigType opts of
+        Nothing -> []
+        Just ty -> [SigD (mkName wfName) $ AppT (ConT $ mkName "Workflow") $
+            ConT ty]
     wfName = "sciFlowDefaultMain"
     dag = nmap (\x -> (_nodePid x, _nodeAttr x)) $ mkDAG builder
 {-# INLINE mainWith #-}

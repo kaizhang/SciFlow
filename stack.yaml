@@ -3,7 +3,5 @@ packages:
 
 extra-deps:
     - drmaa-0.2.0
-    - rainbow-0.28.0.4
-    - lens-simple-0.1.0.9
 
-resolver: nightly-2017-08-10
+resolver: lts-10.8
