@@ -68,8 +68,9 @@ data MainOpts = MainOpts
     { preAction     :: Name   -- ^ An action to be execute before the workflow.
                               -- The action should have type: @'IO' () -> 'IO' ()@.
                               -- e.g., some initialization processes.
-    , programHeader :: String
-    , workflowConfigType :: Maybe Name    -- ^ The type for workflow config
+    , programHeader :: String  -- ^ Short description about the program.
+    , workflowConfigType :: Maybe Name    -- ^ The type of workflow config. Default is
+                                          -- @Nothing@ which let type inference do its job.
     }
 
 T.deriveLift ''MainOpts

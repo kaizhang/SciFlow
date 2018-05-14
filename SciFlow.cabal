@@ -1,5 +1,5 @@
 name:                SciFlow
-version:             0.6.1
+version:             0.6.2
 synopsis:            Scientific workflow management system
 description:         SciFlow is a DSL for building scientific workflows.
                      Workflows built with SciFlow can be run either on desktop
@@ -9,7 +9,7 @@ license:             MIT
 license-file:        LICENSE
 author:              Kai Zhang
 maintainer:          kai@kzhang.org
-copyright:           (c) 2015-2017 Kai Zhang
+copyright:           (c) 2015-2018 Kai Zhang
 category:            Control
 build-type:          Simple
 cabal-version:       >=1.10
