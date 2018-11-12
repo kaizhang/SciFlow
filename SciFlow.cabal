@@ -1,5 +1,5 @@
 name:                SciFlow
-version:             0.6.2
+version:             0.7.0
 synopsis:            Scientific workflow management system
 description:         SciFlow is a DSL for building scientific workflows.
                      Workflows built with SciFlow can be run either on desktop
@@ -25,51 +25,49 @@ library
   ghc-options: -Wall
   exposed-modules:
     Scientific.Workflow
-    Scientific.Workflow.Main
-    Scientific.Workflow.Main.Options
+    Scientific.Workflow.TH
     Scientific.Workflow.Types
-    Scientific.Workflow.Visualize
-    Scientific.Workflow.Internal.Builder
-    Scientific.Workflow.Internal.Builder.Types
-    Scientific.Workflow.Internal.DB
-    Scientific.Workflow.Internal.Utils
+    Scientific.Workflow.Exec
+    Scientific.Workflow.Coordinator
+    Scientific.Workflow.Coordinator.Drmaa
 
   other-modules:
     Paths_SciFlow
 
   if flag(drmaa)
     CPP-Options: -DDRMAA_ENABLED
-    build-depends: drmaa >=0.2.0
+    build-depends: drmaa >=0.3.0
 
   build-depends:
-      base >=4.7 && <5.0
+      base >= 4.7 && < 5.0
+    , async
     , bytestring
-    , aeson
-    , containers
-    , cereal
-    , cereal-text
+    , binary
+    , unordered-containers
     , directory
     , data-default-class
     , exceptions
-    , executable-path
-    , fgl
-    , graphviz
-    , lens >=4.0
-    , lifted-async
+    , safe-exceptions
+    , funflow == 1.4.*
+    , lens >= 4.0
+    , katip
     , mtl
-    , network
-    , optparse-applicative >=0.14.0.0
+    , monad-control
+    , stm
+    , store
+    , shelly
+    , network >= 2.8.0.0
+    , optparse-applicative >= 0.14.0.0
+    , path
+    , process
     , rainbow
-    , sqlite-simple
-    , split
+    , random
     , th-lift
     , th-lift-instances
-    , time
     , temporary
     , text
     , template-haskell
     , transformers
-    , yaml
 
   hs-source-dirs:      src
   default-language:    Haskell2010

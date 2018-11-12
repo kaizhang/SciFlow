@@ -1,7 +1,14 @@
+flags:
+    SciFlow:
+        drmaa: true
+
 packages:
     - '.'
 
 extra-deps:
-    - drmaa-0.2.0
+    - '../drmaa-haskell'
+    - funflow-1.4.0
+    - katip-0.6.3.0
+    - network-2.8.0.0
 
-resolver: lts-10.8
+resolver: lts-12.14

@@ -1,52 +1,48 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
-import Control.Monad
-import Network.Socket hiding (recv)
-import Network.Socket.ByteString
-import Control.Concurrent
-import System.IO
-import Data.Serialize
-import qualified Data.Text as T
-import Scientific.Workflow.Internal.Utils
-import           System.Process           (CreateProcess (..), ProcessHandle,
-                                           StdStream (..), createProcess,
-                                           interruptProcessGroupOf, proc)
+{-# LANGUAGE QuasiQuotes #-}
 
-startSocket = do
-    putStrLn "Start socket"
-    sock <- socket AF_UNIX Stream defaultProtocol
-    let addr = "\0SciFlow.socket"
-    bind sock $ SockAddrUnix addr
-    listen sock 1
-    forever $ do
-        (s, _) <- accept sock
-        r <- loop s []
-        mapM_ putStrLn r
-  where
-    loop s acc = do
-        d <- getData s
-        case d of
-            Exit -> do
-                close s
-                return $ "disconnected" : acc
-            x -> loop s $ (show x) : acc
-    getData s = do
-        h <- decode <$> recv s 4096
-        case h of
-            Right x -> return x
-            Left e -> error e
+import Path
+import Scientific.Workflow
+import Scientific.Workflow.Types
+import Scientific.Workflow.Exec
+import Scientific.Workflow.Coordinator.Drmaa
+import qualified Control.Funflow.ContentStore                as CS
+import Data.Default
+import           Language.Haskell.TH
+import Control.Arrow
+import Control.Funflow
 
-runApp :: IO ()
-runApp = do
-    (_, _, Just e, p) <- createProcess cmd
-        { std_err = CreatePipe
-        , new_session = True }
-    x <- hGetContents e
-    putStrLn x
-    return ()
-  where
-    cmd = proc "./Main" $ ["run", "--log-server", "\\0SciFlow.socket"]
+compile "wf" [t| SciFlow IO Int () |] $
+    node "S1" [| (*2) |] $
+    node "S2" [| (+2) |] $
+    ["S1", "S2"] ~> "S3" $
+    node "S3" [| (uncurry (+)) |] $
+    node "S4" [| (+2) |] $
+    node "S5" [| (+2) |] $
+    node "S6" [| (\(x,y,z) -> x + y + z) |] $
+    ["S3", "S4", "S5"] ~> "S6" $ def
 
+{-
 main = do
-    forkIO $ startSocket
-    --threadDelay 1000000
-    runApp
+  res <- CS.withStore [absdir|/tmp/funflow|] $ \store -> do
+     runSciFlow hook store 623 wf 2
+  case res of
+    Left err -> putStrLn $ "Something went wrong: " ++ show err
+    Right x -> print x
+    -}
+
+config :: DrmaaConfig
+config = DrmaaConfig
+    { _queue_size = 2
+    , _cmd = ("/home/kai/dev/SciFlow/tests/exec", [])
+    , _address = (192, 168, 0, 1)
+    , _port = 8888 }
+
+main = withDrmaa config $ \d -> do
+  res <- CS.withStore [absdir|/home/kai/dev/SciFlow/tests/db|] $ \store -> do
+     runCoordinator d store wf 2
+  case res of
+    Left err -> putStrLn $ "Something went wrong: " ++ show err
+    Right x -> print x
+

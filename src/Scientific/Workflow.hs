@@ -1,77 +1,96 @@
-{-|
-Module      : Scientific.Workflow
-Description : Building type safe scientific workflows
-Copyright   : (c) 2015-2017 Kai Zhang
-License     : MIT
-Maintainer  : kai@kzhang.org
-Stability   : experimental
-Portability : POSIX
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-SciFlow is a DSL for building scientific workflows. Workflows built with SciFlow
-can be run either on desktop computers or in grid computing environments that
-support DRMAA.
-
-Features:
-
-1. Easy to use and safe: Provide a simple and flexible way to design type safe
-computational pipelines in Haskell.
-
-2. Automatic Checkpointing: The states of intermediate steps are automatically
-logged, allowing easy restart upon failures.
-
-3. Parallelism and grid computing support.
-
-Example:
-
-> import           Control.Lens             ((.=))
-> import           Scientific.Workflow
->
-> f :: Int -> Int
-> f = (+1)
->
-> defaultMain $ do
->     nodeS "step0" [| return . const [1..10] :: () -> WorkflowConfig () [Int] |] $ return ()
->     nodeP' 2 "step1" 'f $ note .= "run in parallel with batch size 2"
->     nodeP' 4 "step2" 'f $ note .= "run in parallel with batch size 4"
->     node' "step3" [| \(x, y) -> x ++ y |] $ return ()
->
->     ["step0"] ~> "step1"
->     ["step0"] ~> "step2"
->     ["step1", "step2"] ~> "step3"
-
--}
 module Scientific.Workflow
-    ( defaultMain
-    , mainWith
-    , defaultMainOpts
-    , MainOpts(..)
-
-    , Builder
-    , namespace
+    ( module Scientific.Workflow.TH
+    , module Scientific.Workflow.Types
     , node
-    , node'
-    , nodeS
-    , nodeP
-    , nodeP'
-    , nodePS
-    , nodeSharedP
-    , nodeSharedP'
-    , nodeSharedPS
-    , link
     , (~>)
     , path
-
-    , label
-    , note
-    , submitToRemote
-    , remoteParam
-
-    , ContextData(..)
-    , WorkflowConfig
-    , Workflow(..)
     ) where
 
-import           Scientific.Workflow.Internal.Builder
-import           Scientific.Workflow.Internal.Builder.Types
-import           Scientific.Workflow.Main
-import           Scientific.Workflow.Types
+import qualified Data.Text as T
+import Data.List
+import qualified Data.HashMap.Strict as M
+import Control.Funflow
+import Control.Funflow.ContentHashable (contentHash, ContentHashable)
+import Control.Monad.Identity (Identity(..))
+import Data.Store (Store, encode, decodeEx)
+
+import Scientific.Workflow.Types
+import Scientific.Workflow.TH
+
+-- | Declare a pure computational step.
+node :: ToExpQ fun
+     => T.Text   -- ^ Node id
+     -> fun      -- ^ Template Haskell expression representing
+                 -- functions with type @a -> b@.
+     -> Workflow
+     -> Workflow
+node i f wf = wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
+  where
+    nd = Node [| mkJob i $ return . $(toExpQ f) |]
+{-# INLINE node #-}
+
+nodePar :: ToExpQ fun
+        => T.Text   -- ^ Node id
+        -> fun      -- ^ Template Haskell expression representing
+                    -- functions with type @a -> b@.
+        -> Workflow
+        -> Workflow
+nodePar i f wf = wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
+  where
+    nd = Node [| mapA $ mkJob i $ return . $(toExpQ f) |]
+
+
+-- | Declare the dependency between nodes.
+-- Example:
+--
+-- > node' "step1" [| \() -> 1 :: Int |] $ return ()
+-- > node' "step2" [| \() -> 2 :: Int |] $ return ()
+-- > node' "step3" [| \(x, y) -> x * y |] $ return ()
+-- > link ["step1", "step2"] "step3"
+linkFromTo :: [T.Text] -> T.Text -> Workflow -> Workflow
+linkFromTo ps to wf = wf{ _parents = M.insertWith undefined to ps $ _parents wf }
+{-# INLINE linkFromTo #-}
+
+-- | @(~>) = 'link'@.
+(~>) :: [T.Text] -> T.Text -> Workflow -> Workflow
+(~>) = linkFromTo
+{-# INLINE (~>) #-}
+
+-- | "@'path' [a, b, c]@" is equivalent to "@'link' a b >> 'link' b c@"
+path :: [T.Text] -> Workflow -> Workflow
+path ns wf = foldl' f wf $ zip (init ns) $ tail ns
+  where
+    f flow (fr, to) = linkFromTo [fr] to flow
+{-# INLINE path #-}
+
+{-
+-- | Add a prefix to IDs of nodes for a given builder, i.e.,
+-- @id@ becomes @prefix_id@.
+namespace :: T.Text -> Builder () -> Builder ()
+namespace prefix builder = modify (st <>)
+  where
+    st = execState (builder >> addPrefix) ([], [])
+    addPrefix = modify $ \(nodes, edges) ->
+        ( map (\x -> x{_nodePid = prefix <> "_" <> _nodePid x}) nodes
+        , map (\x -> x{ _edgeFrom = prefix <> "_" <> _edgeFrom x
+                      , _edgeTo = prefix <> "_" <> _edgeTo x }) edges )
+                      -}
+
+mkJob ::  (Store o, ArrowFlow (Job m) ex arr, ContentHashable Identity i)
+      => T.Text -> (i -> m o) -> arr i o
+mkJob n f = wrap' prop (Job n (JobConfig Nothing Nothing) f)
+  where
+    prop = Properties
+        { name = Just n
+        , cache = cacher
+        , mdpolicy = Nothing }
+    cacher = Cache
+        { cacherKey = \_ i -> runIdentity $ contentHash (n, i)
+        , cacherStoreValue = encode
+        , cacherReadValue = decodeEx }
