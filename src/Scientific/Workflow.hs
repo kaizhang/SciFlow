@@ -8,6 +8,9 @@ module Scientific.Workflow
     ( module Scientific.Workflow.TH
     , module Scientific.Workflow.Types
     , node
+    , nodeM
+    , nodePar
+    , nodeParM
     , (~>)
     , path
     ) where
@@ -35,6 +38,18 @@ node i f wf = wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
     nd = Node [| mkJob i $ return . $(toExpQ f) |]
 {-# INLINE node #-}
 
+-- | Declare a pure computational step.
+nodeM :: ToExpQ fun
+      => T.Text   -- ^ Node id
+      -> fun      -- ^ Template Haskell expression representing
+                 -- functions with type @a -> b@.
+      -> Workflow
+      -> Workflow
+nodeM i f wf = wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
+  where
+    nd = Node [| mkJob i $(toExpQ f) |]
+{-# INLINE nodeM #-}
+
 nodePar :: ToExpQ fun
         => T.Text   -- ^ Node id
         -> fun      -- ^ Template Haskell expression representing
@@ -45,6 +60,15 @@ nodePar i f wf = wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
   where
     nd = Node [| mapA $ mkJob i $ return . $(toExpQ f) |]
 
+nodeParM :: ToExpQ fun
+        => T.Text   -- ^ Node id
+        -> fun      -- ^ Template Haskell expression representing
+                    -- functions with type @a -> b@.
+        -> Workflow
+        -> Workflow
+nodeParM i f wf = wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
+  where
+    nd = Node [| mapA $ mkJob i $(toExpQ f) |]
 
 -- | Declare the dependency between nodes.
 -- Example:

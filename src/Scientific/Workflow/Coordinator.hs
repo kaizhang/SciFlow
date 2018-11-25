@@ -143,8 +143,7 @@ runStep coord store cache input = checkStore >>= \case
         host <- submitJob coord chash
         waitForComplete host
   where
-    chash = cacherKey cache confIdent input
-    confIdent = 12345
+    chash = cacherKey cache undefined input
     simpleOutPath item = toFilePath $ CS.itemPath store item </> [relfile|out|]
     waitForComplete host = checkStore >>= \case
         Just contents -> do

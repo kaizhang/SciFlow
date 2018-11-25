@@ -38,7 +38,9 @@ data DrmaaConfig = DrmaaConfig
     { _queue_size :: Int
     , _cmd :: (FilePath, [String])
     , _address :: (Int, Int, Int, Int)
-    , _port :: Int }
+    , _port :: Int
+    -- , _job_parameters :: M.HashMap T.Text JobParas
+    }
 
 data Drmaa = Drmaa 
     { _drmaa_controller :: TMVar DrmaaController
@@ -94,13 +96,15 @@ instance Coordinator Drmaa where
 
     spawnWorker coord@(Drmaa control config) = liftIO $ do
         host <- randHost
-        forkIO $ do
-            D.runAndWait exe args D.defaultJobAttributes
-                {D._env = [("SCIFLOW_HOST_ID", show host)]}
-            return ()
+        _ <- forkFinally (start host) $ \case
+            Left ex -> atomically $ setWorkerStatus coord host $
+                ErrorExit $ show ex
+            Right _ -> return ()
         return host
       where
         (exe, args) = _cmd config
+        start host = D.runAndWait exe args D.defaultJobAttributes
+            {D._env = [("SCIFLOW_HOST_ID", show host)]}
 
     workerStatus (Drmaa control _) host = _worker_status .
         M.lookupDefault (error "worker not found") host . _workers <$>

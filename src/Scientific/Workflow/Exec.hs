@@ -72,13 +72,12 @@ runStep :: (MonadIO m, MonadMask m)
         -> (i -> KatipContextT m o)
 runStep _ NoCache f = f
 runStep store cache f = \i -> do
-    let chash = cacherKey cache confIdent i
+    let chash = cacherKey cache undefined i
     checkStore chash >>= \case 
         Right contents -> return contents
         Left fp -> (f i >>= writeStore store cache chash fp) `onException`
             CS.removeFailed store chash
   where
-    confIdent = 12345
     simpleOutPath item = toFilePath $ CS.itemPath store item </> [relfile|out|]
     checkStore chash = CS.constructOrWait store chash >>= \case
         CS.Pending void -> absurd void
