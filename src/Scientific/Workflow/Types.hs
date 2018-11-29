@@ -1,12 +1,12 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Scientific.Workflow.Types where
 
-import Data.Default.Class (Default(..))
 import qualified Data.HashMap.Strict as M
 import Control.Exception.Safe (SomeException)
 import Control.Funflow
 import qualified Data.Text as T
 import           Language.Haskell.TH
+import Control.Monad.State.Lazy (State)
 
 -- | Configuration of jobs.
 data JobConfig = JobConfig
@@ -35,8 +35,7 @@ data Workflow = Workflow
     , _parents :: M.HashMap T.Text [T.Text]
     }
 
-instance Default Workflow where
-    def = Workflow M.empty M.empty
+type Builder = State Workflow
 
 -- | Objects that can be converted to ExpQ.
 class ToExpQ a where

@@ -40,12 +40,10 @@ library
 
   build-depends:
       base >= 4.7 && < 5.0
-    , async
     , bytestring
     , binary
     , unordered-containers
     , directory
-    , data-default-class
     , exceptions
     , safe-exceptions
     , funflow == 1.4.*

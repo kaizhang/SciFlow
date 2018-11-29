@@ -18,7 +18,6 @@ import Data.List (intercalate)
 import           Control.Monad.IO.Class                      (liftIO)
 import Data.ByteString.Lazy (fromStrict, toStrict)
 import Control.Concurrent.MVar
-import Control.Concurrent.Async
 import qualified DRMAA as D
 import Control.Concurrent.STM
 import Control.Concurrent (threadDelay, forkFinally, forkIO)
