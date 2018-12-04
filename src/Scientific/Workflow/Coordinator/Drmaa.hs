@@ -8,7 +8,8 @@ module Scientific.Workflow.Coordinator.Drmaa
     , withDrmaa
     ) where
 
-import Control.Monad.Catch (bracket)
+import Control.Monad.Catch (bracket, MonadMask)
+import Control.Monad.IO.Class (MonadIO)
 import System.Environment (getEnv)
 import           Control.Funflow.ContentHashable
 import System.Random (randomIO)
@@ -45,9 +46,10 @@ data Drmaa = Drmaa
     { _drmaa_controller :: TMVar DrmaaController
     , _drmaa_config :: DrmaaConfig }
 
-withDrmaa :: DrmaaConfig -> (Drmaa -> IO a) -> IO a
-withDrmaa config f = D.withSession $ Drmaa <$>
-    newTMVarIO (DrmaaController M.empty M.empty) <*> return config >>= f
+withDrmaa :: (MonadMask m, MonadIO m) => DrmaaConfig -> (Drmaa -> m a) -> m a
+withDrmaa config f = D.withSession $ do
+    c <- liftIO $ newTMVarIO $ DrmaaController M.empty M.empty
+    f $ Drmaa c config
 
 instance Coordinator Drmaa where
     data Connection Drmaa = DrmaaConn Socket

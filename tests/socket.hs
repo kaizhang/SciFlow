@@ -2,15 +2,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-import Path
 import Scientific.Workflow
-import Scientific.Workflow.Types
-import Scientific.Workflow.Exec
-import Scientific.Workflow.Coordinator.Drmaa
-import qualified Control.Funflow.ContentStore                as CS
-import           Language.Haskell.TH
-import Control.Arrow
-import Control.Funflow
+import Scientific.Workflow.Main
 
 build "wf" [t| SciFlow IO Int () |] $ do
     node "S1" [| (*2) |]
@@ -22,26 +15,6 @@ build "wf" [t| SciFlow IO Int () |] $ do
     node "S6" [| (\(x,y,z) -> x + y + z) |]
     ["S3", "S4", "S5"] ~> "S6"
 
-{-
 main = do
-  res <- CS.withStore [absdir|/tmp/funflow|] $ \store -> do
-     runSciFlow hook store 623 wf 2
-  case res of
-    Left err -> putStrLn $ "Something went wrong: " ++ show err
-    Right x -> print x
-    -}
-
-config :: DrmaaConfig
-config = DrmaaConfig
-    { _queue_size = 2
-    , _cmd = ("/home/kai/dev/SciFlow/tests/exec", [])
-    , _address = (192, 168, 0, 1)
-    , _port = 8888 }
-
-main = withDrmaa config $ \d -> do
-  res <- CS.withStore [absdir|/home/kai/dev/SciFlow/tests/db|] $ \store -> do
-     runCoordinator d store wf 2
-  case res of
-    Left err -> putStrLn $ "Something went wrong: " ++ show err
-    Right x -> print x
-
+    x <- defaultMain defaultMainOpts wf 2
+    print x

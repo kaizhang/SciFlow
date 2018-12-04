@@ -27,6 +27,7 @@ type SciFlow m = Flow (Job m) SomeException
 -- | A computation node.
 data Node = Node
     { _node_function :: ExpQ
+    , _node_parallel :: Bool
     }
 
 -- | Workflow declaration, containing a map of nodes and their parental processes.
@@ -34,6 +35,9 @@ data Workflow = Workflow
     { _nodes :: M.HashMap T.Text Node
     , _parents :: M.HashMap T.Text [T.Text]
     }
+
+instance Semigroup Workflow where
+    x <> y = Workflow (_nodes x <> _nodes y) (_parents x <> _parents y)
 
 type Builder = State Workflow
 

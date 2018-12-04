@@ -25,6 +25,7 @@ library
   ghc-options: -Wall
   exposed-modules:
     Scientific.Workflow
+    Scientific.Workflow.Main
     Scientific.Workflow.TH
     Scientific.Workflow.Types
     Scientific.Workflow.Exec

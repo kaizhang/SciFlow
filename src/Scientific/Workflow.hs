@@ -8,15 +8,17 @@ module Scientific.Workflow
     , module Scientific.Workflow.Types
     , node
     , nodeM
-    --, nodePar
-    --, nodeParM
+    , nodePar
+    , nodeParM
     , (~>)
     , path
+    , namespace
     ) where
 
+import Control.Arrow
 import qualified Data.Text as T
 import qualified Data.HashMap.Strict as M
-import Control.Monad.State.Lazy (modify)
+import Control.Monad.State.Lazy (modify, execState)
 
 import Scientific.Workflow.Types
 import Scientific.Workflow.TH
@@ -30,7 +32,7 @@ node :: ToExpQ fun
 node i f = modify $ \wf ->
     wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
   where
-    nd = Node [| return . $(toExpQ f) |]
+    nd = Node [| return . $(toExpQ f) |] False
 {-# INLINE node #-}
 
 -- | Declare a pure computational step.
@@ -42,30 +44,28 @@ nodeM :: ToExpQ fun
 nodeM i f = modify $ \wf ->
     wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
   where
-    nd = Node [| $(toExpQ f) |]
+    nd = Node [| $(toExpQ f) |] False
 {-# INLINE nodeM #-}
 
-{-
 nodePar :: ToExpQ fun
         => T.Text   -- ^ Node id
         -> fun      -- ^ Template Haskell expression representing
                     -- functions with type @a -> b@.
-        -> Workflow
-        -> Workflow
-nodePar i f wf = wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
+        -> Builder ()
+nodePar i f = modify $ \wf ->
+    wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
   where
-    nd = Node [| mapA $ mkJob i $ return . $(toExpQ f) |]
+    nd = Node [| return . $(toExpQ f) |] True
 
 nodeParM :: ToExpQ fun
         => T.Text   -- ^ Node id
         -> fun      -- ^ Template Haskell expression representing
                     -- functions with type @a -> b@.
-        -> Workflow
-        -> Workflow
-nodeParM i f wf = wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
+        -> Builder ()
+nodeParM i f = modify $ \wf ->
+    wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
   where
-    nd = Node [| mapA $ mkJob i $(toExpQ f) |]
-    -}
+    nd = Node [| $(toExpQ f) |] True
 
 -- | Declare the dependency between nodes.
 -- Example:
@@ -89,15 +89,14 @@ path :: [T.Text] -> Builder ()
 path ns = sequence_ $ zipWith linkFromTo (map return $ init ns) $ tail ns
 {-# INLINE path #-}
 
-{-
 -- | Add a prefix to IDs of nodes for a given builder, i.e.,
 -- @id@ becomes @prefix_id@.
-namespace :: T.Text -> Workflow -> Workflow
-namespace prefix wf = modify (st <>)
+namespace :: T.Text -> Builder () -> Builder ()
+namespace prefix builder = modify (st <>)
   where
-    st = execState (builder >> addPrefix) ([], [])
-    addPrefix = modify $ \(nodes, edges) ->
-        ( map (\x -> x{_nodePid = prefix <> "_" <> _nodePid x}) nodes
-        , map (\x -> x{ _edgeFrom = prefix <> "_" <> _edgeFrom x
-                      , _edgeTo = prefix <> "_" <> _edgeTo x }) edges )
--}
+    st = execState (builder >> addPrefix) $ Workflow M.empty M.empty
+    addPrefix = modify $ \Workflow{..} ->
+        let nodes = M.fromList $ map (first add) $ M.toList _nodes 
+            parents = M.fromList $ map (add *** map add) $ M.toList _parents
+        in Workflow nodes parents
+    add x = prefix <> "_" <> x

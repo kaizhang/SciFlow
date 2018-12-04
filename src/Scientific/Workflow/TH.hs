@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Scientific.Workflow.TH (build) where
 
@@ -63,12 +64,14 @@ mkDefs wf x = do
         mapM_ define ps
         (idToName, decs) <- get 
         let parentNames = map (flip (M.lookupDefault undefined) idToName) ps
-        e <- lift $ link parentNames [| mkJob nd $ndFun |]
+        e <- lift $ link parentNames $ if _node_parallel
+            then [| mapA $ mkJob nd $_node_function |]
+            else [| mkJob nd $_node_function |]
         let dec = ValD (VarP $ mkName ndName) (NormalB e) []
         put (M.insert nd ndName idToName, dec:decs)
         return ()
       where
-        ndFun = _node_function $ M.lookupDefault undefined nd $ _nodes wf
+        Node{..} = M.lookupDefault undefined nd $ _nodes wf
         ps = M.lookupDefault [] nd $ _parents wf
         ndName = T.unpack $ T.intercalate "_" $ "f":nd:ps
 {-# INLINE mkDefs #-}
