@@ -6,9 +6,22 @@ packages:
     - '.'
 
 extra-deps:
-    - '../drmaa-haskell'
-    - funflow-1.4.0
-    - katip-0.6.3.0
-    - network-2.8.0.0
+    - drmaa-0.3.0
+    - distributed-process-monad-control-0.5.1.3
+    - katip-0.7.0.0
 
-resolver: lts-12.14
+    - git:     https://github.com/haskell-distributed/distributed-static.git
+      commit:  b7591922edafb0203d8ef4c39a724ff0553327da
+
+    - git:     https://github.com/haskell-distributed/network-transport-tcp.git
+      commit:  d58250e2388b86a1865ac4139373cbdc106e72e1
+
+    - git:     https://github.com/haskell-distributed/distributed-process.git
+      commit:  660d554f6acd2dba8b605c84e8fa69e45708bc14
+
+    - git:     https://github.com/tweag/funflow.git
+      commit:  78cd6e8b77bcc85208b0343fdcefd04a0533225a
+      subdirs:
+        - funflow
+
+resolver: nightly-2019-03-25

@@ -9,7 +9,7 @@ license:             MIT
 license-file:        LICENSE
 author:              Kai Zhang
 maintainer:          kai@kzhang.org
-copyright:           (c) 2015-2018 Kai Zhang
+copyright:           (c) 2015-2019 Kai Zhang
 category:            Control
 build-type:          Simple
 cabal-version:       >=1.10
@@ -24,13 +24,14 @@ Flag drmaa
 library
   ghc-options: -Wall
   exposed-modules:
-    Scientific.Workflow
-    Scientific.Workflow.Main
-    Scientific.Workflow.TH
-    Scientific.Workflow.Types
-    Scientific.Workflow.Exec
-    Scientific.Workflow.Coordinator
-    Scientific.Workflow.Coordinator.Drmaa
+    Control.Workflow
+    Control.Workflow.Language
+    Control.Workflow.Language.TH
+    Control.Workflow.Interpreter.FunctionTable
+    Control.Workflow.Interpreter.Exec
+    Control.Workflow.Coordinator
+    Control.Workflow.Coordinator.Drmaa
+    Control.Workflow.Types
 
   other-modules:
     Paths_SciFlow
@@ -45,21 +46,25 @@ library
     , binary
     , unordered-containers
     , directory
+    , distributed-process == 0.7.*
+    , distributed-process-monad-control
+    , network-transport == 0.5.*
+    , network-transport-tcp
     , exceptions
     , safe-exceptions
-    , funflow == 1.4.*
+    , funflow >= 1.4.1
     , lens >= 4.0
     , katip
+    , hostname
     , mtl
     , monad-control
     , stm
     , store
     , shelly
-    , network >= 2.8.0.0
+    , network
     , optparse-applicative >= 0.14.0.0
     , path
     , process
-    , rainbow
     , random
     , th-lift
     , th-lift-instances

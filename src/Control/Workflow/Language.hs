@@ -3,13 +3,10 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Scientific.Workflow
-    ( module Scientific.Workflow.TH
-    , module Scientific.Workflow.Types
+module Control.Workflow.Language
+    ( module Control.Workflow.Language.TH
     , node
-    , nodeM
     , nodePar
-    , nodeParM
     , (~>)
     , path
     , namespace
@@ -19,53 +16,30 @@ import Control.Arrow
 import qualified Data.Text as T
 import qualified Data.HashMap.Strict as M
 import Control.Monad.State.Lazy (modify, execState)
+import           Language.Haskell.TH (Name)
 
-import Scientific.Workflow.Types
-import Scientific.Workflow.TH
+import Control.Workflow.Types
+import Control.Workflow.Language.TH
 
 -- | Declare a pure computational step.
-node :: ToExpQ fun
-     => T.Text   -- ^ Node id
-     -> fun      -- ^ Template Haskell expression representing
-                 -- functions with type @a -> b@.
+node :: T.Text   -- ^ Node id
+     -> Name     -- ^ Template Haskell expression representing
+                 -- functions with type @a -> Process b@.
      -> Builder ()
 node i f = modify $ \wf ->
     wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
   where
-    nd = Node [| return . $(toExpQ f) |] False
+    nd = Node f False
 {-# INLINE node #-}
 
--- | Declare a pure computational step.
-nodeM :: ToExpQ fun
-      => T.Text   -- ^ Node id
-      -> fun      -- ^ Template Haskell expression representing
-                 -- functions with type @a -> b@.
-      -> Builder ()
-nodeM i f = modify $ \wf ->
-    wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
-  where
-    nd = Node [| $(toExpQ f) |] False
-{-# INLINE nodeM #-}
-
-nodePar :: ToExpQ fun
-        => T.Text   -- ^ Node id
-        -> fun      -- ^ Template Haskell expression representing
+nodePar :: T.Text   -- ^ Node id
+        -> Name     -- ^ Template Haskell expression representing
                     -- functions with type @a -> b@.
         -> Builder ()
 nodePar i f = modify $ \wf ->
     wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
   where
-    nd = Node [| return . $(toExpQ f) |] True
-
-nodeParM :: ToExpQ fun
-        => T.Text   -- ^ Node id
-        -> fun      -- ^ Template Haskell expression representing
-                    -- functions with type @a -> b@.
-        -> Builder ()
-nodeParM i f = modify $ \wf ->
-    wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
-  where
-    nd = Node [| $(toExpQ f) |] True
+    nd = Node f True
 
 -- | Declare the dependency between nodes.
 -- Example:
