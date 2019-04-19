@@ -6,9 +6,10 @@
 module Control.Workflow.Language.TH (build) where
 
 import Control.Arrow
-import Control.Arrow.Free (Choice, mapA)
+import Control.Arrow.Free (Free, mapA, effect)
 import Control.Monad.Reader
 import Data.Binary (Binary)
+import Data.Typeable (Typeable)
 import qualified Data.Text as T
 import           Language.Haskell.TH
 import qualified Data.HashMap.Strict as M
@@ -75,7 +76,7 @@ mkDefs wf x = do
         funDefs <- get 
         let parentNames = map (fst . flip (M.lookupDefault undefined) funDefs) ps
         e <- lift $ link parentNames $ if _node_parallel
-            then [| mapA $ mkJob nd $(varE _node_function) |]
+            then [| mkJobP nd $(varE _node_function) |]
             else [| mkJob nd $(varE _node_function) |]
         let dec = (ndName, ValD (VarP $ mkName ndName) (NormalB e) [])
         put $ M.insert nd dec funDefs
@@ -112,12 +113,25 @@ getSinks wf = filter (\x -> not $ S.member x ps) $ M.keys $ _nodes wf
 {-# INLINE getSinks #-}
 
 mkJob :: (Binary i, Binary o, ContentHashable Identity i)
-      => T.Text -> (i -> ReaderT env IO o) -> Choice (Flow env) i o
+      => T.Text -> (i -> ReaderT env IO o) -> Free (Flow env) i o
 mkJob n f = step job
   where
     job = Job
         { _job_name = n 
         , _job_config = JobConfig Nothing Nothing
-        , _job_action = f
-        , _job_cache = (\i -> runIdentity $ contentHash (n, i)) }
+        , _job_parallel = False
+        , _job_action = effect $
+            Action f (\i -> runIdentity $ contentHash (n, i)) }
 {-# INLINE mkJob #-}
+
+mkJobP :: (Binary i, Binary o, ContentHashable Identity i, Typeable i)
+       => T.Text -> (i -> ReaderT env IO o) -> Free (Flow env) [i] [o]
+mkJobP n f = step job
+  where
+    job = Job
+        { _job_name = n 
+        , _job_config = JobConfig Nothing Nothing
+        , _job_parallel = True
+        , _job_action = mapA $ effect $
+            Action f (\i -> runIdentity $ contentHash (n, i)) }
+{-# INLINE mkJobP #-}

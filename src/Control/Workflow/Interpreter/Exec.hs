@@ -56,8 +56,12 @@ runJob :: (Coordinator coordinator, Binary i, Binary o, Binary env)
        -> env
        -> Job env i o
        -> (i -> ExceptT SomeException Process o)
-runJob coord store remoteFlow env Job{..} input =
-    CS.waitUntilComplete store chash >>= \case
+runJob coord store remoteFlow env j@Job{..} input
+    | _job_parallel = runAction coord store remoteFlow env j input
+    {-
+    | otherwise = runner input
+  where
+    runner i = CS.waitUntilComplete store chash >>= \case
         Just item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
         Nothing -> handleAny cleanUp $ lift $ do
             fp <- CS.markPending store chash
@@ -65,18 +69,54 @@ runJob coord store remoteFlow env Job{..} input =
             pid <- reserve coord
             liftIO $ putStrLn $ "Working: " ++ show chash
             res <- call (_dict remoteFlow) (processNodeId pid) $
-                (_table remoteFlow) (_job_name, encode env, encode input)
+                (_table remoteFlow) (_job_name, encode env, encode i)
             case res of
                 Nothing -> error "error"
                 Just r -> do
                     release coord pid
                     writeStore store chash fp $ decode r
-  where
-    chash = _job_cache input
-    cleanUp ex = do
-        CS.removeFailed store chash
-        throwError ex
+      where
+        chash = _action_cache _job_action i
+        cleanUp ex = do
+            CS.removeFailed store chash
+            throwError ex
     simpleOutPath item = toFilePath $ CS.itemPath store item </> [relfile|out|]
+    -}
+
+runAction :: (Coordinator coordinator, Binary i, Binary o, Binary env)
+       => coordinator
+       -> CS.ContentStore
+       -> FunctionTable
+       -> env
+       -> Job env i o
+       -> (i -> ExceptT SomeException Process o)
+runAction coord store remoteFlow env Job{..} = 
+    runAsyncA $ eval (AsyncA . runner) $ _job_action
+  where
+    runner :: Action env i o -> (i -> ExceptT SomeException Process o)
+    runner act i = CS.waitUntilComplete store chash >>= \case
+        Just item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
+        {-
+        Nothing -> handleAny cleanUp $ lift $ do
+            fp <- CS.markPending store chash
+            -- callLocal (_job_action input) >>= writeStore store chash fp
+            pid <- reserve coord
+            liftIO $ putStrLn $ "Working: " ++ show chash
+            res <- call (_dict remoteFlow) (processNodeId pid) $
+                (_table remoteFlow) (_job_name, encode env, encode [i])
+            case res of
+                Nothing -> error "error"
+                Just r -> do
+                    release coord pid
+                    writeStore store chash fp $ head $ decode r
+                    -}
+      where
+        chash = _action_cache act i
+        cleanUp ex = do
+            CS.removeFailed store chash
+            throwError ex
+    simpleOutPath item = toFilePath $ CS.itemPath store item </> [relfile|out|]
+
 
 --------------------------------------------------------------------------------
 -- Store functions
