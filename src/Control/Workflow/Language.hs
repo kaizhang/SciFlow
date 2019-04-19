@@ -24,7 +24,7 @@ import Control.Workflow.Language.TH
 -- | Declare a pure computational step.
 node :: T.Text   -- ^ Node id
      -> Name     -- ^ Template Haskell expression representing
-                 -- functions with type @a -> Process b@.
+                 -- functions with type @a -> IO b@.
      -> Builder ()
 node i f = modify $ \wf ->
     wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
@@ -34,7 +34,7 @@ node i f = modify $ \wf ->
 
 nodePar :: T.Text   -- ^ Node id
         -> Name     -- ^ Template Haskell expression representing
-                    -- functions with type @a -> b@.
+                    -- functions with type @a -> IO b@.
         -> Builder ()
 nodePar i f = modify $ \wf ->
     wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }

@@ -1,12 +1,24 @@
-{-# LANGUAGE QuasiQuotes         #-}
-{-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
+--------------------------------------------------------------------------------
+-- |
+-- Module      :  Control.Workflow.Coordinator
+-- Copyright   :  (c) 2019 Kai Zhang
+-- License     :  MIT
+-- Maintainer  :  kai@kzhang.org
+-- Stability   :  experimental
+-- Portability :  portable
+--
+-- Coordinator needs to be able to discover new workers and send commands
+-- to workers. The implementation of Coordinator thus contains server and
+-- client parts. Server-side codes are executed by `withCoordinator` and 
+-- client-side codes are executed by `initClient`.
+--
+--------------------------------------------------------------------------------
 
 module Control.Workflow.Coordinator
     ( Signal(..)
@@ -16,6 +28,7 @@ module Control.Workflow.Coordinator
     ) where
 
 import Data.Binary (Binary)
+import Control.Monad.Catch (MonadMask)
 import GHC.Generics (Generic)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Distributed.Process (Process, ProcessId, expect)
@@ -23,25 +36,26 @@ import GHC.Conc (STM, atomically)
 
 class Coordinator coordinator where
     -- | Configuration
-    type Config coordinator = c | c -> coordinator
+    type Config coordinator = config | config -> coordinator
 
-    -- | Get the size of the queue.
-    queueSize :: coordinator -> Int
+    -- | Initialize Coordinator on the server.
+    withCoordinator :: (MonadMask m, MonadIO m)
+                    => Config coordinator -> (coordinator -> m a) -> m a
 
-    addToQueue :: coordinator -> Worker -> STM ()
-
+    -- | Get all workers.
     getWorkers :: coordinator -> STM [Worker]
 
-    -- | Reserve a free worker.
-    reserve :: MonadIO m => coordinator -> m ProcessId
+    -- | Add a worker to the worker pool.
+    addToPool :: coordinator -> Worker -> STM ()
 
-    -- | Release a worker
+    -- | Reserve a free worker. This function should block
+    -- until a worker is reserved.
+    reserve :: coordinator -> Process ProcessId
+
+    -- | Set a worker free.
     release :: MonadIO m => coordinator -> ProcessId -> m ()
 
     remove :: coordinator -> ProcessId -> Process ()
-
-    masterAddr :: Config coordinator -> String
-    masterPort :: Config coordinator -> Int
 
 -- | A worker.
 data Worker = Worker

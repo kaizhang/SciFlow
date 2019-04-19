@@ -26,7 +26,7 @@ import Control.Distributed.Process (processNodeId, getSelfPid, register, call, P
 import Network.Transport (Transport)
 import Control.Distributed.Process.Node
 import Control.Distributed.Process.MonadBaseControl ()
-import qualified Data.ByteString                             as BS
+import qualified Data.ByteString.Lazy                             as BS
 import GHC.Conc (atomically)
 import Data.Binary (Binary(..), encode, decode)
 import           Katip
@@ -45,36 +45,34 @@ execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
          -> AsyncA (KatipContextT (ExceptT SomeException Process)) () ()
 execFlow coord store env sciflow = eval (AsyncA . runFlow') $ _flow sciflow
   where
-    runFlow' (Step w) = lift . runJob coord store (_job_cache w) (_function_table sciflow) env w
+    runFlow' (Step w) = lift . runJob coord store (_function_table sciflow) env w
     runFlow' (UStep f) = \x -> 
         lift $ lift $ liftIO $ runReaderT (f x) env
 
 runJob :: (Coordinator coordinator, Binary i, Binary o, Binary env)
        => coordinator
        -> CS.ContentStore
-       -> Cacher i o
        -> FunctionTable
        -> env
        -> Job env i o
        -> (i -> ExceptT SomeException Process o)
-runJob _ _ NoCache _ _ _ _ = error "not implement"
-runJob coord store cache@(Cache key _ _) remoteFlow env Job{..} input =
+runJob coord store remoteFlow env Job{..} input =
     CS.waitUntilComplete store chash >>= \case
-        Just item -> liftIO $ cacherReadValue cache <$>
-            BS.readFile (simpleOutPath item)
+        Just item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
         Nothing -> handleAny cleanUp $ lift $ do
             fp <- CS.markPending store chash
-            -- callLocal (_job_action input) >>= writeStore store cache chash fp
+            -- callLocal (_job_action input) >>= writeStore store chash fp
             pid <- reserve coord
+            liftIO $ putStrLn $ "Working: " ++ show chash
             res <- call (_dict remoteFlow) (processNodeId pid) $
                 (_table remoteFlow) (_job_name, encode env, encode input)
             case res of
                 Nothing -> error "error"
                 Just r -> do
                     release coord pid
-                    writeStore store cache chash fp $ decode r
+                    writeStore store chash fp $ decode r
   where
-    chash = key undefined input
+    chash = _job_cache input
     cleanUp ex = do
         CS.removeFailed store chash
         throwError ex
@@ -84,11 +82,10 @@ runJob coord store cache@(Cache key _ _) remoteFlow env Job{..} input =
 -- Store functions
 --------------------------------------------------------------------------------
 
-writeStore :: MonadIO m => CS.ContentStore -> Cacher i o -> ContentHash
-           -> Path Abs Dir -> o -> m o
-writeStore store cache chash fp res = do
-    liftIO $ BS.writeFile (toFilePath $ fp </> [relfile|out|]) $
-        cacherStoreValue cache $ res
+writeStore :: (Binary o, MonadIO m)
+           => CS.ContentStore -> ContentHash -> Path Abs Dir -> o -> m o
+writeStore store chash fp res = do
+    liftIO $ BS.writeFile (toFilePath $ fp </> [relfile|out|]) $ encode res
     _ <- CS.markComplete store chash
     return res
 {-# INLINE writeStore #-}

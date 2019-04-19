@@ -42,4 +42,4 @@ build "wf" [t| SciFlow Int |] $ do
     node "S6" 's6
     ["S3", "S4", "S5"] ~> "S6"
 
-main = mainWith defaultMainOpts{_n_workers = 2} 100 wf
+main = mainWith defaultMainOpts{_n_workers = 5} 100 wf

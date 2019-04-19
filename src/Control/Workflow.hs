@@ -68,8 +68,8 @@ mainWith MainOpts{..} env wf = do
             , _address = _master_addr
             , _port = _master_port }
     getArgs >>= \case
-        ["--slave"] -> initClient (masterAddr config) (masterPort config) $ _function_table wf
-        _ -> withDrmaa config $ \drmaa -> do
+        ["--slave"] -> initClient _master_addr _master_port $ _function_table wf
+        _ -> withCoordinator config $ \drmaa -> do
             Right transport <- createTransport (defaultTCPAddr host port)
                 defaultTCPParameters
             dir <- makeAbsolute _store_path >>= parseAbsDir
@@ -93,31 +93,18 @@ runSciFlow coord transport store env sciflow = do
         let initialContext = ()
             initialNamespace = "executeLoop"
         nd <- newLocalNode transport $ _rtable $ _function_table sciflow
-        _ <- forkProcess nd $ do
+        runProcess nd $ do
             getSelfPid >>= register "SciFlow_master"
-            initServer coord
-        runProcess nd $ runExceptT
-            ( runKatipContextT le initialContext initialNamespace $
-                runAsyncA (execFlow coord store env sciflow) ()
-            ) >>= \case
-                Left ex -> error $ show ex
-                Right _ -> shutdown
+            runExceptT ( runKatipContextT le initialContext initialNamespace $
+                runAsyncA (execFlow coord store env sciflow) () ) >>= \case
+                    Left ex -> error $ show ex
+                    Right _ -> shutdown
   where
     shutdown = do
         liftIO $ putStrLn "shutdown all workers"
         workers <- liftIO $ atomically $ getWorkers coord
         mapM_ (remove coord . _worker_id) workers
         liftIO $ threadDelay 1000000 >> putStrLn "Finished!"
-
-initServer :: Coordinator coordinator
-           => coordinator
-           -> Process ()
-initServer coord = do
-    worker <- expect :: Process Worker
-    liftIO $ do
-        putStrLn $ "Found a new worker: " ++ show (_worker_id worker)
-        atomically $ addToQueue coord worker
-    initServer coord
 
 shutdownServer :: Coordinator coordinator
                => coordinator

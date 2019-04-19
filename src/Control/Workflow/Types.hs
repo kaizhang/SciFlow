@@ -18,17 +18,17 @@ import qualified Data.HashMap.Strict as M
 import Data.Binary (Binary)
 import Control.Monad.Reader
 import Control.Exception.Safe (Exception)
-import Control.Funflow (Cacher)
 import qualified Data.Text as T
 import           Language.Haskell.TH
 import Control.Monad.State.Lazy (State)
-import Control.Arrow.Free (Free, effect)
+import Control.Funflow.ContentHashable (ContentHash)
+import Control.Arrow.Free (Choice, effect)
 import qualified Data.ByteString.Lazy as B
 import Control.Distributed.Process.Serializable (SerializableDict)
 import Control.Distributed.Process (Process, RemoteTable, Closure, Static)
 
 data SciFlow env = SciFlow
-    { _flow :: Free (Flow env) () ()
+    { _flow :: Choice (Flow env) () ()
     , _function_table :: FunctionTable }
 
 data FunctionTable = FunctionTable
@@ -40,10 +40,10 @@ data Flow env i o where
   Step :: (Binary i, Binary o) => Job env i o -> Flow env i o
   UStep :: (i -> ReaderT env IO o) -> Flow env i o   -- ^ `UStep` will not be cached and run every time.
 
-step :: (Binary i, Binary o) => Job env i o -> Free (Flow env) i o
+step :: (Binary i, Binary o) => Job env i o -> Choice (Flow env) i o
 step job = effect $ Step job
 
-ustep :: (i -> ReaderT env IO o) -> Free (Flow env) i o
+ustep :: (i -> ReaderT env IO o) -> Choice (Flow env) i o
 ustep = effect . UStep 
 
 -- | Configuration of jobs.
@@ -57,7 +57,7 @@ data Job env i o = Job
     { _job_name   :: T.Text
     , _job_config :: JobConfig
     , _job_action :: i -> ReaderT env IO o
-    , _job_cache :: Cacher i o }
+    , _job_cache :: i -> ContentHash }
 
 -- | A computation node.
 data Node = Node

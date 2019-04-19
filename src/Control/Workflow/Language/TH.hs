@@ -6,16 +6,14 @@
 module Control.Workflow.Language.TH (build) where
 
 import Control.Arrow
-import Control.Arrow.Free (Free, mapA)
+import Control.Arrow.Free (Choice, mapA)
 import Control.Monad.Reader
 import Data.Binary (Binary)
 import qualified Data.Text as T
 import           Language.Haskell.TH
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
-import Data.Store (Store, encode, decodeEx)
 import Control.Funflow.ContentHashable (contentHash, ContentHashable)
-import Control.Funflow (Cacher(..))
 import Control.Monad.Identity (Identity(..))
 import Control.Monad.State.Lazy (StateT, get, put, lift, execStateT, execState)
 
@@ -112,17 +110,13 @@ getSinks wf = filter (\x -> not $ S.member x ps) $ M.keys $ _nodes wf
     ps = S.fromList $ concat $ M.elems $ _parents wf
 {-# INLINE getSinks #-}
 
-mkJob :: (Binary i, Binary o, Store o, ContentHashable Identity i)
-      => T.Text -> (i -> ReaderT env IO o) -> Free (Flow env) i o
+mkJob :: (Binary i, Binary o, ContentHashable Identity i)
+      => T.Text -> (i -> ReaderT env IO o) -> Choice (Flow env) i o
 mkJob n f = step job
   where
     job = Job
         { _job_name = n 
         , _job_config = JobConfig Nothing Nothing
         , _job_action = f
-        , _job_cache = cacher }
-    cacher = Cache
-        { cacherKey = \_ i -> runIdentity $ contentHash (n, i)
-        , cacherStoreValue = encode
-        , cacherReadValue = decodeEx }
+        , _job_cache = (\i -> runIdentity $ contentHash (n, i)) }
 {-# INLINE mkJob #-}
