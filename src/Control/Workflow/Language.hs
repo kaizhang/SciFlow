@@ -4,7 +4,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Control.Workflow.Language
-    ( module Control.Workflow.Language.TH
+    ( Node(..)
+    , Workflow(..)
+    , Builder
+    , RemoteException
     , node
     , nodePar
     , (~>)
@@ -14,12 +17,32 @@ module Control.Workflow.Language
 
 import Control.Arrow
 import qualified Data.Text as T
+import Control.Exception.Safe (Exception)
+import Control.Monad.State.Lazy (State)
 import qualified Data.HashMap.Strict as M
 import Control.Monad.State.Lazy (modify, execState)
 import           Language.Haskell.TH (Name)
 
 import Control.Workflow.Types
-import Control.Workflow.Language.TH
+
+-- | A computation node.
+data Node = Node
+    { _node_function :: Name  -- ^ a function with type: a -> Process b
+    , _node_parallel :: Bool }
+
+-- | Workflow declaration, containing a map of nodes and their parental processes.
+data Workflow = Workflow
+    { _nodes :: M.HashMap T.Text Node
+    , _parents :: M.HashMap T.Text [T.Text] }
+
+instance Semigroup Workflow where
+    x <> y = Workflow (_nodes x <> _nodes y) (_parents x <> _parents y)
+
+type Builder = State Workflow
+
+newtype RemoteException = RemoteException String deriving (Show)
+
+instance Exception RemoteException
 
 -- | Declare a pure computational step.
 node :: T.Text   -- ^ Node id

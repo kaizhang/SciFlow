@@ -17,6 +17,7 @@ import Control.Funflow.ContentHashable (contentHash, ContentHashable)
 import Control.Monad.Identity (Identity(..))
 import Control.Monad.State.Lazy (StateT, get, put, lift, execStateT, execState)
 
+import Control.Workflow.Language
 import Control.Workflow.Types
 import Control.Workflow.Interpreter.FunctionTable (mkFunTable)
 
