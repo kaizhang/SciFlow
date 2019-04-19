@@ -33,13 +33,14 @@ build "wf" [t| SciFlow Int |] $ do
     node "S0" 's0
     node "S1" 's1
     node "S2" 's2
-    ["S0"] ~> "S1"
-    ["S0"] ~> "S2"
-    ["S1", "S2"] ~> "S3"
     node "S3" 's3
     node "S4" 's0
     node "S5" 's0
     node "S6" 's6
+
     ["S3", "S4", "S5"] ~> "S6"
+    ["S0"] ~> "S1"
+    ["S0"] ~> "S2"
+    ["S1", "S2"] ~> "S3"
 
 main = mainWith defaultMainOpts{_n_workers = 5} 100 wf

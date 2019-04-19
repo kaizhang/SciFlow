@@ -6,17 +6,14 @@ module Control.Workflow.Types
     , JobConfig(..)
     , Job(..)
     , Action(..)
-    , _unAction
     , Flow(..)
     , step
     , ustep
     ) where
 
-import qualified Data.HashMap.Strict as M
 import Data.Binary (Binary)
 import Control.Monad.Reader
 import qualified Data.Text as T
-import           Language.Haskell.TH
 import Control.Funflow.ContentHashable (ContentHash)
 import Control.Arrow.Free (Free, Choice, effect)
 import qualified Data.ByteString.Lazy as B

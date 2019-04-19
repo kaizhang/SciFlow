@@ -10,29 +10,21 @@
 module Control.Workflow.Interpreter.Exec (execFlow) where
 
 import           Control.Arrow.Async
-import           Control.Arrow.Free                          (eval, Choice)
+import           Control.Arrow.Free                          (eval)
 import Control.Monad.Reader
-import Control.Monad.Except (ExceptT, runExceptT, throwError)
+import Control.Monad.Except (ExceptT, throwError)
 import           Control.Exception.Safe                      (SomeException,
-                                                              bracket,
                                                               handleAny)
-import           Control.Funflow hiding (Step)
 import           Control.Funflow.ContentHashable
 import qualified Control.Funflow.ContentStore                as CS
 import           Control.Monad.IO.Class                      (MonadIO, liftIO)
 import           Control.Monad.Trans.Class                   (lift)
-import Control.Concurrent (threadDelay)
-import Control.Distributed.Process (processNodeId, getSelfPid, register, call, Process)
-import Network.Transport (Transport)
-import qualified Data.Text as T
-import Control.Distributed.Process.Node
+import Control.Distributed.Process (processNodeId, call, Process)
 import Control.Distributed.Process.MonadBaseControl ()
 import qualified Data.ByteString.Lazy                             as BS
-import GHC.Conc (atomically)
 import Data.Binary (Binary(..), encode, decode)
 import           Katip
 import           Path
-import           System.IO                                   (stderr)
 
 import Control.Workflow.Types
 import Control.Workflow.Coordinator

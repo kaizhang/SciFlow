@@ -1,6 +1,8 @@
 Scientific workflow management system
 =====================================
 
+I'm in the process of redesigning the framework using Cloud Haskell and free arrows.
+
 Introduction
 ------------
 
