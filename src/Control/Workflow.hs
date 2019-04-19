@@ -11,6 +11,7 @@ module Control.Workflow
     , MainOpts(..)
     , initClient
     , module Control.Workflow.Language
+    , module Control.Workflow.Language.TH
     , module Control.Workflow.Types
     ) where
 
@@ -36,6 +37,7 @@ import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParamet
 import Control.Workflow.Interpreter.Exec
 import Control.Workflow.Coordinator.Drmaa
 import Control.Workflow.Language
+import Control.Workflow.Language.TH
 import Control.Workflow.Types
 
 data MainOpts = MainOpts
