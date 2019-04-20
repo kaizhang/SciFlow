@@ -25,14 +25,22 @@ module Control.Workflow.Coordinator
     , Worker(..)
     , WorkerStatus(..)
     , Coordinator(..)
+    , initClient
     ) where
 
 import Data.Binary (Binary)
 import Control.Monad.Catch (MonadMask)
 import GHC.Generics (Generic)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Distributed.Process (Process, ProcessId, expect)
-import GHC.Conc (STM, atomically)
+import Network.HostName (getHostName)
+import Control.Distributed.Process
+import Control.Distributed.Process.Node
+import Network.Transport (EndPointAddress(..))
+import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
+import qualified Data.ByteString.Char8                             as B
+import GHC.Conc (STM)
+
+import Control.Workflow.Types
 
 class Coordinator coordinator where
     -- | Configuration
@@ -77,3 +85,33 @@ data Signal = Shutdown deriving (Generic)
 
 instance Binary Signal
 
+
+initClient :: String   -- ^ The address of Master node 
+           -> Int      -- ^ The port of Master node
+           -> FunctionTable
+           -> IO ()
+initClient addr port rf = do
+    host <- getHostName
+    transport <- tryCreateTransport host ([8000..8200] :: [Int])
+    node <- newLocalNode transport $ _rtable rf
+    runProcess node $ do
+        let serverAddr = NodeId $ EndPointAddress $ B.intercalate ":" $
+                [B.pack addr, B.pack $ show port, "0"]
+        nd <- searchServer serverAddr
+        liftIO $ putStrLn $ "Connected to " ++ show nd
+        self <- getSelfPid
+        send nd $ Worker self Idle
+        (expect :: Process Signal) >>= \case
+            Shutdown -> return ()
+  where
+    searchServer :: NodeId -> Process ProcessId
+    searchServer server = do
+        whereisRemoteAsync server "SciFlow_master"
+        expectTimeout 1000000 >>= \case
+            Just (WhereIsReply _ (Just sid)) -> return sid
+            _ -> liftIO (putStrLn "Server not found") >> terminate
+    tryCreateTransport host (p:ports) = createTransport 
+        (defaultTCPAddr host (show p)) defaultTCPParameters >>= \case
+            Left _ -> tryCreateTransport host ports
+            Right trsp -> return trsp
+    tryCreateTransport _ _ = error "Failed to create transport"

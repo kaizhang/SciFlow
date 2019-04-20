@@ -1,23 +1,32 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE LambdaCase    #-}
 
 module Control.Workflow.Coordinator.Drmaa
-    ( module Control.Workflow.Coordinator
+    ( Drmaa
     , DrmaaConfig(..)
-    , Drmaa
+    , getDefaultDrmaaConfig
+    , MainOpts(..)
+    , defaultMainOpts
+    , mainWith
     ) where
 
-import Control.Monad.IO.Class (MonadIO)
-import qualified Data.HashMap.Strict as M
 import           Control.Monad.IO.Class                      (liftIO)
+import qualified Data.HashMap.Strict as M
 import qualified DRMAA as D
+import qualified Control.Funflow.ContentStore                as CS
+import Data.Binary (Binary)
 import Control.Distributed.Process
 import Control.Concurrent.STM
 import Control.Concurrent (threadDelay)
-import Control.Monad (when)
-import Data.Maybe (fromJust, isJust)
+import System.Environment (getArgs, getExecutablePath)
+import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
+import Path (parseAbsDir)
+import System.Directory (makeAbsolute)
 
 import Control.Workflow.Coordinator
+import Control.Workflow.Types
+import Control.Workflow.Interpreter.Exec
 
 data DrmaaConfig = DrmaaConfig
     { _queue_size :: Int
@@ -26,6 +35,15 @@ data DrmaaConfig = DrmaaConfig
     , _port :: Int
     -- , _job_parameters :: M.HashMap T.Text JobParas
     }
+
+getDefaultDrmaaConfig :: IO DrmaaConfig
+getDefaultDrmaaConfig = do
+    exePath <- getExecutablePath
+    return $ DrmaaConfig
+        { _queue_size = 5
+        , _cmd = (exePath, ["--slave"])
+        , _address = "192.168.0.1"
+        , _port = 8888 }
 
 type WorkerPool = TMVar (M.HashMap ProcessId Worker)
 
@@ -68,7 +86,7 @@ instance Coordinator Drmaa where
    
     release coord worker = liftIO $ atomically $ setWorkerStatus coord worker Idle
 
-    remove coord@(Drmaa pool config) worker = do
+    remove (Drmaa pool _) worker = do
         send worker Shutdown
         liftIO $ atomically $
             (M.delete worker <$> takeTMVar pool) >>= putTMVar pool
@@ -81,16 +99,45 @@ spawnWorker config = do
   where
     (exe, args) = _cmd config
 
-addToQueue :: Drmaa -> Worker -> STM ()
-addToQueue (Drmaa pool _) worker =
-    (M.insert (_worker_id worker) worker <$> takeTMVar pool) >>= 
-        putTMVar pool
-
-workerStatus (Drmaa pool _) host = _worker_status .
-    M.lookupDefault (error "worker not found") host <$>
-            readTMVar pool
-
 setWorkerStatus (Drmaa pool _) host status =
     (M.adjust (\x -> x {_worker_status = status}) host <$> takeTMVar pool) >>=
         putTMVar pool
+
+data MainOpts = MainOpts
+    { _store_path :: FilePath
+    , _master_addr :: String
+    , _master_port :: Int
+    , _n_workers :: Int
+    }
+
+defaultMainOpts :: MainOpts
+defaultMainOpts = MainOpts
+    { _store_path = "sciflow_db"
+    , _master_addr = "192.168.0.1"
+    , _master_port = 8888
+    , _n_workers = 5
+    }
+
+mainWith :: Binary env
+         => MainOpts
+         -> env
+         -> SciFlow env
+         -> IO ()
+mainWith MainOpts{..} env wf = do
+    exePath <- getExecutablePath
+    let host = _master_addr
+        port = _master_port
+        config = DrmaaConfig
+            { _queue_size = _n_workers
+            , _cmd = (exePath, ["--slave"])
+            , _address = host
+            , _port = port }
+    getArgs >>= \case
+        ["--slave"] -> initClient host port $ _function_table wf
+        _ -> withCoordinator config $ \drmaa -> do
+            Right transport <- createTransport (defaultTCPAddr host (show port))
+                defaultTCPParameters
+            dir <- makeAbsolute _store_path >>= parseAbsDir
+            CS.withStore dir $ \store -> 
+                runSciFlow drmaa transport store env wf
 

@@ -10,8 +10,10 @@ import Control.Distributed.Process.Closure (functionTDict, remotable, mkClosure,
 import Control.Distributed.Process.Node (initRemoteTable)
 import Control.Monad.Reader
 
-import Control.Workflow.Interpreter.FunctionTable
-import Control.Workflow
+import Control.Workflow.Coordinator.Local
+import Control.Workflow.Types
+import Control.Workflow.Language
+import Control.Workflow.Language.TH
 
 s0 = return . const 10
 

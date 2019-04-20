@@ -7,27 +7,62 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Control.Workflow.Interpreter.Exec (execFlow) where
+module Control.Workflow.Interpreter.Exec (runSciFlow) where
 
 import           Control.Arrow.Async
 import           Control.Arrow.Free                          (eval)
 import Control.Monad.Reader
-import Control.Monad.Except (ExceptT, throwError)
+import Control.Monad.Except (ExceptT, throwError, runExceptT)
+import Control.Concurrent.STM (atomically)
 import           Control.Exception.Safe                      (SomeException,
                                                               handleAny)
 import           Control.Funflow.ContentHashable
 import qualified Control.Funflow.ContentStore                as CS
 import           Control.Monad.IO.Class                      (MonadIO, liftIO)
 import           Control.Monad.Trans.Class                   (lift)
-import Control.Distributed.Process (processNodeId, call, Process)
+import Control.Distributed.Process (getSelfPid, register, processNodeId, call, Process)
+import Control.Distributed.Process.Node (runProcess, newLocalNode)
 import Control.Distributed.Process.MonadBaseControl ()
 import qualified Data.ByteString.Lazy                             as BS
+import           Control.Exception.Safe                      (bracket)
+import Control.Concurrent (threadDelay)
+import           System.IO                                   (stderr)
+import Network.Transport (Transport)
 import Data.Binary (Binary(..), encode, decode)
 import           Katip
 import           Path
 
 import Control.Workflow.Types
 import Control.Workflow.Coordinator
+
+-- | Simple evaulation of a flow
+runSciFlow :: (Coordinator coordinator, Binary env)
+           => coordinator
+           -> Transport
+           -> CS.ContentStore
+           -> env
+           -> SciFlow env
+           -> IO ()
+runSciFlow coord transport store env sciflow = do
+    handleScribe <- mkHandleScribe ColorIfTerminal stderr InfoS V2
+    let mkLogEnv = registerScribe "stderr" handleScribe defaultScribeSettings =<<
+            initLogEnv "SciFlow" "production"
+    bracket mkLogEnv closeScribes $ \le -> do
+        let initialContext = ()
+            initialNamespace = "executeLoop"
+        nd <- newLocalNode transport $ _rtable $ _function_table sciflow
+        runProcess nd $ do
+            getSelfPid >>= register "SciFlow_master"
+            runExceptT ( runKatipContextT le initialContext initialNamespace $
+                runAsyncA (execFlow coord store env sciflow) () ) >>= \case
+                    Left ex -> error $ show ex
+                    Right _ -> shutdown
+  where
+    shutdown = do
+        liftIO $ putStrLn "shutdown all workers"
+        workers <- liftIO $ atomically $ getWorkers coord
+        mapM_ (remove coord . _worker_id) workers
+        liftIO $ threadDelay 1000000 >> putStrLn "Finished!"
 
 -- | Flow interpreter.
 execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)

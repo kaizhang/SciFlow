@@ -24,13 +24,13 @@ Flag drmaa
 library
   ghc-options: -Wall
   exposed-modules:
-    Control.Workflow
     Control.Workflow.Language
     Control.Workflow.Language.TH
     Control.Workflow.Interpreter.FunctionTable
     Control.Workflow.Interpreter.Exec
     Control.Workflow.Coordinator
     Control.Workflow.Coordinator.Drmaa
+    Control.Workflow.Coordinator.Local
     Control.Workflow.Types
 
   other-modules:
