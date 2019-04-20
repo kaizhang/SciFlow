@@ -24,6 +24,7 @@ Flag drmaa
 library
   ghc-options: -Wall
   exposed-modules:
+    Control.Workflow
     Control.Workflow.Language
     Control.Workflow.Language.TH
     Control.Workflow.Interpreter.FunctionTable
@@ -57,17 +58,9 @@ library
     , katip
     , hostname
     , mtl
-    , monad-control
     , stm
-    , store
-    , shelly
-    , network
     , optparse-applicative >= 0.14.0.0
     , path
-    , process
-    , random
-    , th-lift
-    , th-lift-instances
     , temporary
     , text
     , template-haskell

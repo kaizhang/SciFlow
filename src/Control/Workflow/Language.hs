@@ -23,8 +23,6 @@ import qualified Data.HashMap.Strict as M
 import Control.Monad.State.Lazy (modify, execState)
 import           Language.Haskell.TH (Name)
 
-import Control.Workflow.Types
-
 -- | A computation node.
 data Node = Node
     { _node_function :: Name  -- ^ a function with type: a -> Process b
