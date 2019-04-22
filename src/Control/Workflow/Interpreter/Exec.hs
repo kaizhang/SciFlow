@@ -35,7 +35,6 @@ import           Path
 import Control.Workflow.Types
 import Control.Workflow.Coordinator
 
--- | Simple evaulation of a flow
 runSciFlow :: (Coordinator coordinator, Binary env)
            => coordinator
            -> Transport

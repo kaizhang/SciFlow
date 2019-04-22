@@ -5,7 +5,6 @@
 
 module Control.Workflow.Language.TH (build) where
 
-import Control.Arrow
 import Control.Arrow.Free (Free, mapA, effect)
 import Control.Monad.Reader
 import Data.Binary (Binary)
@@ -21,6 +20,7 @@ import Control.Monad.State.Lazy (StateT, get, put, lift, execStateT, execState)
 import Control.Workflow.Language
 import Control.Workflow.Types
 import Control.Workflow.Interpreter.FunctionTable (mkFunTable)
+import Control.Workflow.Language.TH.Internal
 
 build :: String
       -> TypeQ
@@ -81,30 +81,12 @@ mkDefs wf x = do
         let dec = (ndName, ValD (VarP $ mkName ndName) (NormalB e) [])
         put $ M.insert nd dec funDefs
       where
-        Node{..} = M.lookupDefault undefined nd $ _nodes wf
+        Node{..} = M.lookupDefault (errMsg nd) nd $ _nodes wf
         ps = M.lookupDefault [] nd $ _parents wf
         ndName = T.unpack $ "f_" <> nd
+        errMsg = error . ("Node not found: " ++) .  T.unpack
 {-# INLINE mkDefs #-}
-
-link :: [String]  -- a list of parents
-     -> ExpQ      -- child
-     -> ExpQ
-link xs x = case xs of
-    [] -> [| (ustep $ \() -> return ()) >>> $x |]
-    [s] -> [| $(varE $ mkName s) >>> $x |]
-    [s1,s2] -> [| $(varE $ mkName s1) &&&
-        $(varE $ mkName s2) >>> $x |]
-    [s1,s2,s3] -> [| tri $(varE $ mkName s1)
-        $(varE $ mkName s2) 
-        $(varE $ mkName s3)
-        >>> $x |]
-    _ -> error "NO IMPLEMENTATION!"
-{-# INLINE link #-}
-
-tri :: Arrow arr => arr i o1 -> arr i o2 -> arr i o3 -> arr i (o1, o2, o3)
-tri f g h = arr (\x -> (x,(x,x))) >>> f *** (g *** h) >>> arr (\(x,(y,z)) -> (x,y,z))
-{-# INLINE tri #-}
-      
+     
 -- | Get all the sinks, i.e., nodes with no children.
 getSinks :: Workflow -> [T.Text]
 getSinks wf = filter (\x -> not $ S.member x ps) $ M.keys $ _nodes wf
