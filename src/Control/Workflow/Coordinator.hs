@@ -29,10 +29,8 @@ module Control.Workflow.Coordinator
 import Data.Binary (Binary)
 import Control.Monad.Catch (MonadMask)
 import GHC.Generics (Generic)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (MonadIO)
 import Control.Distributed.Process
-import Control.Distributed.Process.Node
-import qualified Data.ByteString.Char8                             as B
 import GHC.Conc (STM)
 
 import Control.Workflow.Types

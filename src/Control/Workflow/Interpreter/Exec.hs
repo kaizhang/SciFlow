@@ -13,19 +13,17 @@ import           Control.Arrow.Async
 import           Control.Arrow.Free                          (eval)
 import Control.Monad.Reader
 import Control.Monad.Except (ExceptT, throwError, runExceptT)
-import Control.Concurrent.STM (atomically)
 import           Control.Exception.Safe                      (SomeException,
                                                               handleAny)
 import           Control.Funflow.ContentHashable
 import qualified Control.Funflow.ContentStore                as CS
 import           Control.Monad.IO.Class                      (MonadIO, liftIO)
 import           Control.Monad.Trans.Class                   (lift)
-import Control.Distributed.Process (getSelfPid, register, kill, processNodeId, call, Process)
+import Control.Distributed.Process (kill, processNodeId, call)
 import Control.Distributed.Process.Node (forkProcess, runProcess, newLocalNode, LocalNode)
 import Control.Distributed.Process.MonadBaseControl ()
 import qualified Data.ByteString.Lazy                             as BS
 import           Control.Exception.Safe                      (bracket)
-import Control.Concurrent (threadDelay)
 import           System.IO                                   (stderr)
 import Network.Transport (Transport)
 import Data.Binary (Binary(..), encode, decode)
@@ -99,7 +97,6 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key)
             Just item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
             Nothing -> handleAny cleanUp $ lift $ do
                 fp <- CS.markPending store chash
-                -- callLocal (_job_action input) >>= writeStore store chash fp
                 runProcess localNode $ do
                     pid <- reserve coord
                     liftIO $ putStrLn $ "Working: " ++ show chash

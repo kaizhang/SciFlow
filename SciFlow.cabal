@@ -1,10 +1,8 @@
 name:                SciFlow
 version:             0.7.0
 synopsis:            Scientific workflow management system
-description:         SciFlow is a DSL for building scientific workflows.
-                     Workflows built with SciFlow can be run either on desktop
-                     computers or in grid computing environments that
-                     support DRMAA.
+description:         SciFlow is a DSL for building computational workflows.
+                     SciFlow uses Cloud Haskell for distributed computing.
 license:             MIT
 license-file:        LICENSE
 author:              Kai Zhang
