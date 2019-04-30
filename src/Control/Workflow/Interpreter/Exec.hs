@@ -20,8 +20,8 @@ import           Control.Funflow.ContentHashable
 import qualified Control.Funflow.ContentStore                as CS
 import           Control.Monad.IO.Class                      (MonadIO, liftIO)
 import           Control.Monad.Trans.Class                   (lift)
-import Control.Distributed.Process (getSelfPid, register, processNodeId, call, Process)
-import Control.Distributed.Process.Node (runProcess, newLocalNode)
+import Control.Distributed.Process (getSelfPid, register, kill, processNodeId, call, Process)
+import Control.Distributed.Process.Node (forkProcess, runProcess, newLocalNode, LocalNode)
 import Control.Distributed.Process.MonadBaseControl ()
 import qualified Data.ByteString.Lazy                             as BS
 import           Control.Exception.Safe                      (bracket)
@@ -31,6 +31,7 @@ import Network.Transport (Transport)
 import Data.Binary (Binary(..), encode, decode)
 import           Katip
 import           Path
+import Control.Concurrent.MVar
 
 import Control.Workflow.Types
 import Control.Workflow.Coordinator
@@ -50,40 +51,40 @@ runSciFlow coord transport store env sciflow = do
         let initialContext = ()
             initialNamespace = "executeLoop"
         nd <- newLocalNode transport $ _rtable $ _function_table sciflow
+        pid <- forkProcess nd $ startServer coord
         runProcess nd $ do
-            getSelfPid >>= register "SciFlow_master"
-            runExceptT ( runKatipContextT le initialContext initialNamespace $
-                runAsyncA (execFlow coord store env sciflow) () ) >>= \case
-                    Left ex -> error $ show ex
-                    Right _ -> shutdown
-  where
-    shutdown = do
-        liftIO $ putStrLn "shutdown all workers"
-        workers <- liftIO $ atomically $ getWorkers coord
-        mapM_ (remove coord . _worker_id) workers
-        liftIO $ threadDelay 1000000 >> putStrLn "Finished!"
+            res <- liftIO $ runExceptT $
+                runKatipContextT le initialContext initialNamespace $
+                runAsyncA (execFlow nd coord store env sciflow) () 
+            shutdownServer coord
+            case res of
+                Left ex -> error $ show ex
+                Right _ -> return ()
+            kill pid "Exit"
 
 -- | Flow interpreter.
 execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
-         => coordinator
+         => LocalNode
+         -> coordinator
          -> CS.ContentStore
          -> env
          -> SciFlow env
-         -> AsyncA (KatipContextT (ExceptT SomeException Process)) () ()
-execFlow coord store env sciflow = eval (AsyncA . runFlow') $ _flow sciflow
+         -> AsyncA (KatipContextT (ExceptT SomeException IO)) () ()
+execFlow localNode coord store env sciflow = eval (AsyncA . runFlow') $ _flow sciflow
   where
-    runFlow' (Step w) = lift . runJob coord store (_function_table sciflow) env w
+    runFlow' (Step w) = lift . runJob localNode coord store (_function_table sciflow) env w
     runFlow' (UStep f) = \x -> 
         lift $ lift $ liftIO $ runReaderT (f x) env
 
 runJob :: (Coordinator coordinator, Binary env)
-       => coordinator
+       => LocalNode
+       -> coordinator
        -> CS.ContentStore
        -> FunctionTable
        -> env
        -> Job env i o
-       -> (i -> ExceptT SomeException Process o)
-runJob coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key) ->
+       -> (i -> ExceptT SomeException IO o)
+runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key) ->
     AsyncA $ \i -> do
         let chash = key i
             cleanUp ex = do
@@ -93,19 +94,22 @@ runJob coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key) ->
                   | otherwise = encode i
             decode' x | _job_parallel = let [r] = decode x in r
                       | otherwise = decode x
+        result <- liftIO newEmptyMVar
         CS.waitUntilComplete store chash >>= \case
             Just item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
             Nothing -> handleAny cleanUp $ lift $ do
                 fp <- CS.markPending store chash
                 -- callLocal (_job_action input) >>= writeStore store chash fp
-                pid <- reserve coord
-                liftIO $ putStrLn $ "Working: " ++ show chash
-                call (_dict rf) (processNodeId pid)
-                    ((_table rf) (_job_name, encode env, input)) >>= \case
-                        Just r -> do
-                            release coord pid
-                            writeStore store chash fp $ decode' r
-                        _ -> error "error"
+                runProcess localNode $ do
+                    pid <- reserve coord
+                    liftIO $ putStrLn $ "Working: " ++ show chash
+                    call (_dict rf) (processNodeId pid)
+                        ((_table rf) (_job_name, encode env, input)) >>= \case
+                            Just r -> do
+                                release coord pid
+                                liftIO $ putMVar result r
+                            _ -> error "error"
+                liftIO (takeMVar result) >>= writeStore store chash fp . decode'
     ) _job_action
   where
     simpleOutPath item = toFilePath $ CS.itemPath store item </> [relfile|out|]

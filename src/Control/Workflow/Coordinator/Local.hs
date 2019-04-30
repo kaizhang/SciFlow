@@ -34,12 +34,13 @@ data Local = Local WorkerCounter LocalConfig
 instance Coordinator Local where
     type Config Local = LocalConfig
 
-    withCoordinator config f = do
-        c <- liftIO $ newTMVarIO 0
-        f $ Local c config
+    withCoordinator config f =
+        (Local <$> liftIO (newTMVarIO 0) <*> return config) >>= f
 
+    startServer _ = return ()
+    shutdownServer _ = return ()
+    startClient _ _ = return ()
     getWorkers _ = return []
-
     addToPool _ _ = return ()
 
     reserve (Local counter config) = liftIO tryReserve >> getSelfPid
