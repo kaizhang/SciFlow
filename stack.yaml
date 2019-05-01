@@ -1,9 +1,6 @@
-flags:
-    SciFlow:
-        drmaa: true
-
 packages:
-    - '.'
+    - 'SciFlow'
+    - 'SciFlow-drmaa'
 
 extra-deps:
     - drmaa-0.3.0

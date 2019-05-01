@@ -13,11 +13,6 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 extra-source-files:
-  README.md
-
-Flag drmaa
-  Description: Enable DRMAA integration
-  Default:     False
 
 library
   ghc-options: -Wall
@@ -28,17 +23,12 @@ library
     Control.Workflow.Interpreter.FunctionTable
     Control.Workflow.Interpreter.Exec
     Control.Workflow.Coordinator
-    Control.Workflow.Coordinator.Drmaa
     Control.Workflow.Coordinator.Local
     Control.Workflow.Types
 
   other-modules:
     Paths_SciFlow
     Control.Workflow.Language.TH.Internal
-
-  if flag(drmaa)
-    CPP-Options: -DDRMAA_ENABLED
-    build-depends: drmaa >=0.3.0
 
   build-depends:
       base >= 4.7 && < 5.0
@@ -55,12 +45,10 @@ library
     , funflow >= 1.4.1
     , lens >= 4.0
     , katip
-    , hostname
     , mtl
     , stm
     , optparse-applicative >= 0.14.0.0
     , path
-    , temporary
     , text
     , template-haskell
     , transformers
