@@ -43,8 +43,15 @@ class Coordinator coordinator where
     withCoordinator :: (MonadMask m, MonadIO m)
                     => Config coordinator -> (coordinator -> m a) -> m a
 
-    startServer :: coordinator -> Process ()
-    shutdownServer :: coordinator -> Process ()
+    -- | Server initiation process
+    initiate :: coordinator -> Process ()
+
+    -- | Server monitoring process
+    monitor :: coordinator -> Process ()
+
+    -- | Server shutdown process
+    shutdown :: coordinator -> Process ()
+
     startClient :: coordinator -> FunctionTable -> IO ()
 
     -- | Get all workers.
@@ -55,17 +62,16 @@ class Coordinator coordinator where
 
     -- | Reserve a free worker. This function should block
     -- until a worker is reserved.
-    reserve :: coordinator -> Process ProcessId
+    reserve :: coordinator -> Maybe WorkerConfig -> Process ProcessId
 
-    -- | Set a worker free.
-    release :: MonadIO m => coordinator -> ProcessId -> m ()
-
-    remove :: coordinator -> ProcessId -> Process ()
+    -- | Set a worker free so that it can be assigned other jobs.
+    freeWorker :: MonadIO m => coordinator -> ProcessId -> m ()
 
 -- | A worker.
 data Worker = Worker
     { _worker_id :: ProcessId
     , _worker_status :: WorkerStatus
+    , _worker_config :: Maybe WorkerConfig
     } deriving (Generic, Show)
 
 instance Binary Worker
@@ -77,6 +83,13 @@ data WorkerStatus = Idle
                   deriving (Eq, Generic, Show)
 
 instance Binary WorkerStatus
+
+data WorkerConfig = WorkerConfig
+    { _worker_memory :: Int  -- in GB
+    , _worker_cores :: Int
+    } deriving (Eq, Generic, Show)
+
+instance Binary WorkerConfig
 
 data Signal = Shutdown deriving (Generic)
 

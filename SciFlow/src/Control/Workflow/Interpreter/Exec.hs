@@ -49,16 +49,17 @@ runSciFlow coord transport store env sciflow = do
         let initialContext = ()
             initialNamespace = "executeLoop"
         nd <- newLocalNode transport $ _rtable $ _function_table sciflow
-        pid <- forkProcess nd $ startServer coord
+        pidInit <- forkProcess nd $ initiate coord
+        pidMonitor <- forkProcess nd $ monitor coord
         runProcess nd $ do
             res <- liftIO $ runExceptT $
                 runKatipContextT le initialContext initialNamespace $
                 runAsyncA (execFlow nd coord store env sciflow) () 
-            shutdownServer coord
+            shutdown coord
             case res of
                 Left ex -> error $ show ex
                 Right _ -> return ()
-            kill pid "Exit"
+            kill pidInit "Exit" >> kill pidMonitor "Exit"
 
 -- | Flow interpreter.
 execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
@@ -98,12 +99,12 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key)
             Nothing -> handleAny cleanUp $ lift $ do
                 fp <- CS.markPending store chash
                 runProcess localNode $ do
-                    pid <- reserve coord
+                    pid <- reserve coord Nothing
                     liftIO $ putStrLn $ "Working: " ++ show chash
                     call (_dict rf) (processNodeId pid)
                         ((_table rf) (_job_name, encode env, input)) >>= \case
                             Just r -> do
-                                release coord pid
+                                freeWorker coord pid
                                 liftIO $ putMVar result r
                             _ -> error "error"
                 liftIO (takeMVar result) >>= writeStore store chash fp . decode'

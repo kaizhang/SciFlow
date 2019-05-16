@@ -37,13 +37,14 @@ instance Coordinator Local where
     withCoordinator config f =
         (Local <$> liftIO (newTMVarIO 0) <*> return config) >>= f
 
-    startServer _ = return ()
-    shutdownServer _ = return ()
+    initiate _ = return ()
+    monitor _ = return ()
+    shutdown _ = return ()
     startClient _ _ = return ()
     getWorkers _ = return []
     addToPool _ _ = return ()
 
-    reserve (Local counter config) = liftIO tryReserve >> getSelfPid
+    reserve (Local counter config) _ = liftIO tryReserve >> getSelfPid
       where
         tryReserve = do
             n <- atomically $ takeTMVar counter
@@ -54,11 +55,9 @@ instance Coordinator Local where
                     threadDelay 1000000
                     tryReserve
    
-    release (Local counter _) _ = liftIO $ atomically $ do
+    freeWorker (Local counter _) _ = liftIO $ atomically $ do
         n <- takeTMVar counter
         putTMVar counter $ n - 1
-
-    remove _ _ = return ()
 
 data MainOpts = MainOpts
     { _store_path :: FilePath

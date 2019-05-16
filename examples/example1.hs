@@ -7,7 +7,8 @@ import Control.Concurrent (threadDelay)
 import System.Environment
 
 import Control.Workflow
-import Control.Workflow.Coordinator.Local
+--import Control.Workflow.Coordinator.Local
+import Control.Workflow.Coordinator.Drmaa
 
 s0 :: () -> ReaderT Int IO [Int]
 s0 = return . const [1..10]
@@ -23,7 +24,7 @@ s4 = return . (!!3)
 s5 = return . (!!4)
 s6 = return . (!!5)
 s7 = return . (!!6)
-s8 (a,b,c,d,e,f) = liftIO $ print [a,b,c,d,e,f]
+s8 (a,b,c,d,e,f) = liftIO $ threadDelay 10000000 >>  print [a,b,c,d,e,f]
 s9 = liftIO . print 
     
 build "wf" [t| SciFlow Int |] $ do
