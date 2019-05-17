@@ -5,9 +5,12 @@
 
 module Control.Workflow.Language
     ( Node(..)
+    , NodeAttributes
+    , doc
+    , nCore
+    , memory
     , Workflow(..)
     , Builder
-    , RemoteException
     , node
     , nodePar
     , (~>)
@@ -21,12 +24,40 @@ import Control.Exception.Safe (Exception)
 import Control.Monad.State.Lazy (State)
 import qualified Data.HashMap.Strict as M
 import Control.Monad.State.Lazy (modify, execState)
+import Control.Lens (makeLenses)
+import Data.Maybe (isNothing)
 import           Language.Haskell.TH (Name)
+
+import Control.Workflow.Types (Resource(..))
 
 -- | A computation node.
 data Node = Node
-    { _node_function :: Name  -- ^ a function with type: a -> Process b
+    { _node_function :: Name  -- ^ a function with type: a -> ReaderT env IO b
+    , _node_job_resource :: Maybe Resource
     , _node_parallel :: Bool }
+
+data NodeAttributes = NodeAttributes
+    { _doc :: T.Text   -- ^ documentation
+    , _nCore :: Maybe Int
+    , _memory :: Maybe Int }
+
+makeLenses ''NodeAttributes
+
+mkNode :: Name     -- ^ Template Haskell expression representing
+                   -- functions with type @a -> IO b@.
+       -> State NodeAttributes ()
+       -> Node
+mkNode fun attrSetter 
+    | isNothing core && isNothing mem = Node fun Nothing False
+    | otherwise = Node fun (Just $ Resource core mem) False
+  where
+    core = _nCore attr
+    mem = _memory attr
+    attr = execState attrSetter $ NodeAttributes
+        { _doc = ""
+        , _nCore = Nothing
+        , _memory = Nothing }
+{-# INLINE mkNode #-}
 
 -- | Workflow declaration, containing a map of nodes and their parental processes.
 data Workflow = Workflow
@@ -38,29 +69,33 @@ instance Semigroup Workflow where
 
 type Builder = State Workflow
 
-newtype RemoteException = RemoteException String deriving (Show)
-
-instance Exception RemoteException
-
 -- | Declare a pure computational step.
 node :: T.Text   -- ^ Node id
      -> Name     -- ^ Template Haskell expression representing
                  -- functions with type @a -> IO b@.
+     -> State NodeAttributes ()
      -> Builder ()
-node i f = modify $ \wf ->
+node i f attrSetter = modify $ \wf ->
     wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
   where
-    nd = Node f False
+    nd = mkNode f attrSetter
 {-# INLINE node #-}
 
 nodePar :: T.Text   -- ^ Node id
         -> Name     -- ^ Template Haskell expression representing
                     -- functions with type @a -> IO b@.
+        -> State NodeAttributes ()
         -> Builder ()
-nodePar i f = modify $ \wf ->
-    wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
+nodePar i f attrSetter = modify $ \wf ->
+    wf{ _nodes = M.insertWith undefined i nd{_node_parallel=True} $ _nodes wf }
   where
-    nd = Node f True
+    nd = mkNode f attrSetter
+{-# INLINE nodePar #-}
+
+linkFromTo :: [T.Text] -> T.Text -> Builder ()
+linkFromTo ps to = modify $ \wf ->
+    wf{ _parents = M.insertWith undefined to ps $ _parents wf }
+{-# INLINE linkFromTo #-}
 
 -- | Declare the dependency between nodes.
 -- Example:
@@ -68,13 +103,7 @@ nodePar i f = modify $ \wf ->
 -- > node' "step1" [| \() -> 1 :: Int |] $ return ()
 -- > node' "step2" [| \() -> 2 :: Int |] $ return ()
 -- > node' "step3" [| \(x, y) -> x * y |] $ return ()
--- > link ["step1", "step2"] "step3"
-linkFromTo :: [T.Text] -> T.Text -> Builder ()
-linkFromTo ps to = modify $ \wf ->
-    wf{ _parents = M.insertWith undefined to ps $ _parents wf }
-{-# INLINE linkFromTo #-}
-
--- | @(~>) = 'link'@.
+-- > ["step1", "step2"] ~> "step3"
 (~>) :: [T.Text] -> T.Text -> Builder ()
 (~>) = linkFromTo
 {-# INLINE (~>) #-}

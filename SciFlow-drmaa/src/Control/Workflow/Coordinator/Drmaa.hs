@@ -6,7 +6,6 @@
 module Control.Workflow.Coordinator.Drmaa
     ( Drmaa
     , DrmaaConfig(..)
-    , getDefaultDrmaaConfig
     , MainOpts(..)
     , defaultMainOpts
     , mainWith
@@ -31,6 +30,8 @@ import Path (parseAbsDir)
 import Network.Transport (EndPointAddress(..))
 import System.Directory (makeAbsolute)
 import Control.Concurrent.MVar
+import Text.Printf (printf)
+import Data.Maybe (fromMaybe)
 
 import Control.Workflow.Coordinator
 import Control.Workflow.Types
@@ -49,7 +50,9 @@ mainWith MainOpts{..} env wf = do
             { _queue_size = _n_workers
             , _cmd = (exePath, ["--slave"])
             , _address = host
-            , _port = port }
+            , _port = port
+            , _memory_format = "--mem=%d"
+            , _drmaa_parameters = "" }
     withCoordinator config $ \drmaa -> getArgs >>= \case
         ["--slave"] -> startClient drmaa $ _function_table wf
         _ -> do
@@ -64,17 +67,9 @@ data DrmaaConfig = DrmaaConfig
     , _cmd :: (FilePath, [String])
     , _address :: String
     , _port :: Int
-    -- , _job_parameters :: M.HashMap T.Text JobParas
+    , _memory_format :: String   -- ^ How to specify memory, default: "--mem=%d"
+    , _drmaa_parameters :: String -- ^ additional drmaa parameters
     }
-
-getDefaultDrmaaConfig :: IO DrmaaConfig
-getDefaultDrmaaConfig = do
-    exePath <- getExecutablePath
-    return $ DrmaaConfig
-        { _queue_size = 5
-        , _cmd = (exePath, ["--slave"])
-        , _address = "192.168.0.1"
-        , _port = 8888 }
 
 type WorkerPool = TMVar (M.HashMap ProcessId Worker)
 
@@ -150,7 +145,7 @@ instance Coordinator Drmaa where
         Nothing -> liftIO (threadDelay 1000000) >> reserve coord wc
         Just (Right nd) -> return nd
         Just (Left pool) -> liftIO $ do
-            wid <- spawnWorker _config >> takeMVar _new_worker
+            wid <- spawnWorker _config wc >> takeMVar _new_worker
             let worker = Worker wid Working wc
             atomically $ putTMVar _worker_pool $
                 M.insert wid worker pool
@@ -174,12 +169,18 @@ instance Coordinator Drmaa where
     freeWorker coord worker = liftIO $ atomically $ setWorkerStatus coord worker Idle
 
 -- | Spawn a new worker
-spawnWorker :: DrmaaConfig -> IO ()
-spawnWorker config = do
-    _ <- D.runJob exe args D.defaultJobAttributes {D._env = []}
-    return ()
+spawnWorker :: DrmaaConfig -> Maybe Resource -> IO ()
+spawnWorker config wc = D.runJob exe args attr >>= \case
+    Left err -> error err
+    Right _ -> return ()
   where
+    attr = D.defaultJobAttributes
+        { D._env = []
+        , D._native_specification = Nothing }
     (exe, args) = _cmd config
+    mem = fromMaybe "" $ fmap (printf (_memory_format config)) $
+        wc >>= _total_memory 
+    paras = _drmaa_parameters config <> " " <> mem
 
 setWorkerStatus Drmaa{..} host status =
     (M.adjust (\x -> x {_worker_status = status}) host <$> takeTMVar _worker_pool) >>=

@@ -49,6 +49,7 @@ library
     , stm
     , optparse-applicative >= 0.14.0.0
     , path
+    , th-lift
     , text
     , template-haskell
     , transformers

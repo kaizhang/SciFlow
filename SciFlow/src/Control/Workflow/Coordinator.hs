@@ -62,7 +62,7 @@ class Coordinator coordinator where
 
     -- | Reserve a free worker. This function should block
     -- until a worker is reserved.
-    reserve :: coordinator -> Maybe WorkerConfig -> Process ProcessId
+    reserve :: coordinator -> Maybe Resource -> Process ProcessId
 
     -- | Set a worker free so that it can be assigned other jobs.
     freeWorker :: MonadIO m => coordinator -> ProcessId -> m ()
@@ -71,7 +71,7 @@ class Coordinator coordinator where
 data Worker = Worker
     { _worker_id :: ProcessId
     , _worker_status :: WorkerStatus
-    , _worker_config :: Maybe WorkerConfig
+    , _worker_config :: Maybe Resource
     } deriving (Generic, Show)
 
 instance Binary Worker
@@ -83,13 +83,6 @@ data WorkerStatus = Idle
                   deriving (Eq, Generic, Show)
 
 instance Binary WorkerStatus
-
-data WorkerConfig = WorkerConfig
-    { _worker_memory :: Int  -- in GB
-    , _worker_cores :: Int
-    } deriving (Eq, Generic, Show)
-
-instance Binary WorkerConfig
 
 data Signal = Shutdown deriving (Generic)
 

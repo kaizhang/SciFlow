@@ -99,7 +99,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key)
             Nothing -> handleAny cleanUp $ lift $ do
                 fp <- CS.markPending store chash
                 runProcess localNode $ do
-                    pid <- reserve coord Nothing
+                    pid <- reserve coord _job_resource
                     liftIO $ putStrLn $ "Working: " ++ show chash
                     call (_dict rf) (processNodeId pid)
                         ((_table rf) (_job_name, encode env, input)) >>= \case

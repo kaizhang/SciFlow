@@ -4,6 +4,7 @@
 
 import Control.Monad.Reader
 import Control.Concurrent (threadDelay)
+import Control.Lens
 import System.Environment
 
 import Control.Workflow
@@ -28,16 +29,16 @@ s8 (a,b,c,d,e,f) = liftIO $ threadDelay 10000000 >>  print [a,b,c,d,e,f]
 s9 = liftIO . print 
     
 build "wf" [t| SciFlow Int |] $ do
-    node "S0" 's0
-    nodePar "S1" 's1
+    node "S0" 's0 $ return ()
+    nodePar "S1" 's1 $ return ()
     ["S0"] ~> "S1"
 
-    node "S2" 's2
-    node "S3" 's3
-    node "S4" 's4
-    node "S5" 's5
-    node "S6" 's6
-    node "S7" 's7
+    node "S2" 's2 $ memory .= Just 50000
+    node "S3" 's3 $ memory .= Just 50000
+    node "S4" 's4 $ return ()
+    node "S5" 's5 $ return ()
+    node "S6" 's6 $ return ()
+    node "S7" 's7 $ return ()
     ["S0"] ~> "S2"
     ["S0"] ~> "S3"
     ["S0"] ~> "S4"
@@ -45,10 +46,10 @@ build "wf" [t| SciFlow Int |] $ do
     ["S0"] ~> "S6"
     ["S0"] ~> "S7"
 
-    node "S8" 's8
+    node "S8" 's8 $ return ()
     ["S2", "S3", "S4", "S5","S6","S7"] ~> "S8"
 
-    node "S9" 's9
+    node "S9" 's9 $ return ()
     ["S1"] ~> "S9"
 
 main :: IO ()

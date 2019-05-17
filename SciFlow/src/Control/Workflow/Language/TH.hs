@@ -76,8 +76,8 @@ mkDefs wf x = do
         funDefs <- get 
         let parentNames = map (fst . flip (M.lookupDefault undefined) funDefs) ps
         e <- lift $ link parentNames $ if _node_parallel
-            then [| mkJobP nd $(varE _node_function) |]
-            else [| mkJob nd $(varE _node_function) |]
+            then [| mkJobP nd $(varE _node_function) _node_job_resource |]
+            else [| mkJob nd $(varE _node_function) _node_job_resource |]
         let dec = (ndName, ValD (VarP $ mkName ndName) (NormalB e) [])
         put $ M.insert nd dec funDefs
       where
@@ -95,24 +95,24 @@ getSinks wf = filter (\x -> not $ S.member x ps) $ M.keys $ _nodes wf
 {-# INLINE getSinks #-}
 
 mkJob :: (Binary i, Binary o, ContentHashable Identity i)
-      => T.Text -> (i -> ReaderT env IO o) -> Free (Flow env) i o
-mkJob n f = step job
+      => T.Text -> (i -> ReaderT env IO o) -> Maybe Resource -> Free (Flow env) i o
+mkJob n f config = step job
   where
     job = Job
         { _job_name = n 
-        , _job_config = JobConfig Nothing Nothing
+        , _job_resource = config
         , _job_parallel = False
         , _job_action = effect $
             Action f (\i -> runIdentity $ contentHash (n, i)) }
 {-# INLINE mkJob #-}
 
 mkJobP :: (Binary i, Binary o, ContentHashable Identity i, Typeable i)
-       => T.Text -> (i -> ReaderT env IO o) -> Free (Flow env) [i] [o]
-mkJobP n f = step job
+       => T.Text -> (i -> ReaderT env IO o) -> Maybe Resource -> Free (Flow env) [i] [o]
+mkJobP n f config = step job
   where
     job = Job
         { _job_name = n 
-        , _job_config = JobConfig Nothing Nothing
+        , _job_resource = config
         , _job_parallel = True
         , _job_action = mapA $ effect $
             Action f (\i -> runIdentity $ contentHash (n, i)) }
