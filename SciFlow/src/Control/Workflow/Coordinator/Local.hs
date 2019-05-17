@@ -5,8 +5,6 @@
 module Control.Workflow.Coordinator.Local
     ( LocalConfig(..)
     , Local
-    , MainOpts(..)
-    , defaultMainOpts
     , mainWith
     ) where
 
@@ -19,9 +17,10 @@ import Data.Binary (Binary)
 import Path (parseAbsDir)
 import qualified Control.Funflow.ContentStore                as CS
 import System.Directory (makeAbsolute)
+import qualified Data.HashMap.Strict as M
 
 import Control.Workflow.Coordinator
-import Control.Workflow.Types
+import Control.Workflow
 import Control.Workflow.Interpreter.Exec
 
 data LocalConfig = LocalConfig
@@ -57,27 +56,12 @@ instance Coordinator Local where
         n <- takeTMVar counter
         putTMVar counter $ n - 1
 
-data MainOpts = MainOpts
-    { _store_path :: FilePath
-    , _master_addr :: String
-    , _master_port :: Int
-    , _n_workers :: Int
-    }
-
-defaultMainOpts :: MainOpts
-defaultMainOpts = MainOpts
-    { _store_path = "sciflow_db"
-    , _master_addr = "192.168.0.1"
-    , _master_port = 8888
-    , _n_workers = 5
-    }
-
 mainWith :: Binary env
-         => MainOpts
+         => SciFlowOpts
          -> env
          -> SciFlow env
          -> IO ()
-mainWith MainOpts{..} env wf = do
+mainWith SciFlowOpts{..} env wf = do
     let host = _master_addr
         port = show _master_port
         config = LocalConfig { _queue_size = _n_workers }
@@ -86,5 +70,5 @@ mainWith MainOpts{..} env wf = do
             defaultTCPParameters
         dir <- makeAbsolute _store_path >>= parseAbsDir
         CS.withStore dir $ \store -> 
-            runSciFlow coord transport store env wf
+            runSciFlow coord transport store (ResourceConfig M.empty) env wf
 

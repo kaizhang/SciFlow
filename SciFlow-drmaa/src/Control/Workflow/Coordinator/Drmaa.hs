@@ -6,8 +6,6 @@
 module Control.Workflow.Coordinator.Drmaa
     ( Drmaa
     , DrmaaConfig(..)
-    , MainOpts(..)
-    , defaultMainOpts
     , mainWith
     ) where
 
@@ -30,34 +28,20 @@ import Control.Distributed.Process.Node
 import Path (parseAbsDir)
 import Network.Transport (EndPointAddress(..))
 import System.Directory (makeAbsolute)
-import Control.Concurrent.MVar
 import Text.Printf (printf)
 import Data.Maybe (fromMaybe)
 import System.Random (randomRIO)
 
 import Control.Workflow.Coordinator
-import Control.Workflow.Types
+import Control.Workflow
 import Control.Workflow.Interpreter.Exec
 
-data MainOpts = MainOpts
-    { _store_path :: FilePath
-    , _master_addr :: String
-    , _master_port :: Int
-    , _n_workers :: Int }
-
-defaultMainOpts :: MainOpts
-defaultMainOpts = MainOpts
-    { _store_path = "sciflow_db"
-    , _master_addr = "192.168.0.1"
-    , _master_port = 8888
-    , _n_workers = 5 }
-
 mainWith :: Binary env
-         => MainOpts
+         => SciFlowOpts
          -> env
          -> SciFlow env
          -> IO ()
-mainWith MainOpts{..} env wf = do
+mainWith SciFlowOpts{..} env wf = do
     exePath <- getExecutablePath
     let host = _master_addr
         port = _master_port
@@ -77,7 +61,7 @@ mainWith MainOpts{..} env wf = do
                 defaultTCPParameters
             dir <- makeAbsolute _store_path >>= parseAbsDir
             CS.withStore dir $ \store -> 
-                runSciFlow drmaa transport store env wf
+                runSciFlow drmaa transport store _resources env wf
 
 data DrmaaConfig = DrmaaConfig
     { _queue_size :: Int
@@ -92,16 +76,14 @@ data DrmaaConfig = DrmaaConfig
 
 data Drmaa = Drmaa
     { _worker_pool :: TMVar WorkerPool
-    , _config :: DrmaaConfig
-    , _new_worker :: MVar ProcessId }
+    , _config :: DrmaaConfig }
 
 instance Coordinator Drmaa where
     type Config Drmaa = DrmaaConfig
 
     withCoordinator config f = D.withSession $ liftIO drmaa >>= f
       where
-        drmaa = Drmaa <$> newTMVarIO (WorkerPool 0 M.empty) <*>
-            return config <*> newEmptyMVar
+        drmaa = Drmaa <$> newTMVarIO (WorkerPool 0 M.empty) <*> return config
 
     initiate coord = do
         getSelfPid >>= register "SciFlow_master"

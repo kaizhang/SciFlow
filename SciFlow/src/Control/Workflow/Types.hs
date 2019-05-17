@@ -5,6 +5,7 @@
 module Control.Workflow.Types
     ( SciFlow(..)
     , FunctionTable(..)
+    , ResourceConfig(..)
     , Resource(..)
     , Job(..)
     , Action(..)
@@ -37,8 +38,10 @@ data FunctionTable = FunctionTable
     , _dict :: Static (SerializableDict (Maybe B.ByteString))
     , _rtable :: RemoteTable }
 
--- | Job specific options.
-newtype SciFlowConfig = SciFlowConfig (M.HashMap T.Text Resource)
+-- | Global job specific resource configuration. This will overwrite any
+-- existing configuration.
+newtype ResourceConfig = ResourceConfig
+    { _resource_config :: M.HashMap T.Text Resource }
 
 -- | A wrapper for individual step.
 data Job env i o = Job

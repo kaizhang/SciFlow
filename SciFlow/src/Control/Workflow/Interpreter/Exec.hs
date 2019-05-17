@@ -23,6 +23,7 @@ import Control.Distributed.Process (kill, processNodeId, call)
 import Control.Distributed.Process.Node (forkProcess, runProcess, newLocalNode, LocalNode)
 import Control.Distributed.Process.MonadBaseControl ()
 import qualified Data.ByteString.Lazy                             as BS
+import qualified Data.HashMap.Strict as M
 import           Control.Exception.Safe                      (bracket)
 import           System.IO                                   (stderr)
 import Network.Transport (Transport)
@@ -35,13 +36,14 @@ import Control.Workflow.Types
 import Control.Workflow.Coordinator
 
 runSciFlow :: (Coordinator coordinator, Binary env)
-           => coordinator
-           -> Transport
-           -> CS.ContentStore
-           -> env
+           => coordinator       -- ^ Coordinator backend
+           -> Transport         -- ^ Cloud Haskell transport
+           -> CS.ContentStore   -- ^ Local cache
+           -> ResourceConfig    -- ^ Job resource configuration
+           -> env               -- ^ Optional environmental variables
            -> SciFlow env
            -> IO ()
-runSciFlow coord transport store env sciflow = do
+runSciFlow coord transport store resource env sciflow = do
     handleScribe <- mkHandleScribe ColorIfTerminal stderr InfoS V2
     let mkLogEnv = registerScribe "stderr" handleScribe defaultScribeSettings =<<
             initLogEnv "SciFlow" "production"
@@ -51,7 +53,7 @@ runSciFlow coord transport store env sciflow = do
         nd <- newLocalNode transport $ _rtable $ _function_table sciflow
         pidInit <- forkProcess nd $ initiate coord
         runProcess nd $ do
-            res <- liftIO $ runExceptT $
+            res <- liftIO $ flip runReaderT resource $ runExceptT $
                 runKatipContextT le initialContext initialNamespace $
                 runAsyncA (execFlow nd coord store env sciflow) () 
             shutdown coord
@@ -67,7 +69,7 @@ execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
          -> CS.ContentStore
          -> env
          -> SciFlow env
-         -> AsyncA (KatipContextT (ExceptT SomeException IO)) () ()
+         -> AsyncA (KatipContextT (ExceptT SomeException (ReaderT ResourceConfig IO))) () ()
 execFlow localNode coord store env sciflow = eval (AsyncA . runFlow') $ _flow sciflow
   where
     runFlow' (Step w) = lift . runJob localNode coord store (_function_table sciflow) env w
@@ -81,7 +83,7 @@ runJob :: (Coordinator coordinator, Binary env)
        -> FunctionTable
        -> env
        -> Job env i o
-       -> (i -> ExceptT SomeException IO o)
+       -> (i -> ExceptT SomeException (ReaderT ResourceConfig IO) o)
 runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key) ->
     AsyncA $ \i -> do
         let chash = key i
@@ -95,10 +97,13 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key)
         result <- liftIO newEmptyMVar
         CS.waitUntilComplete store chash >>= \case
             Just item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
-            Nothing -> handleAny cleanUp $ lift $ do
+            Nothing -> handleAny cleanUp $ do
                 fp <- CS.markPending store chash
-                runProcess localNode $ do
-                    pid <- reserve coord _job_resource
+                jobRes <- lift $ reader (M.lookup _job_name . _resource_config) >>= \case
+                    Nothing -> return _job_resource
+                    r -> return r
+                liftIO $ runProcess localNode $ do
+                    pid <- reserve coord jobRes
                     liftIO $ putStrLn $ "Working: " ++ show chash
                     call (_dict rf) (processNodeId pid)
                         ((_table rf) (_job_name, encode env, input)) >>= \case
@@ -110,7 +115,6 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key)
     ) _job_action
   where
     simpleOutPath item = toFilePath $ CS.itemPath store item </> [relfile|out|]
-
 
 --------------------------------------------------------------------------------
 -- Store functions

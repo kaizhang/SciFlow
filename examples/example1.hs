@@ -6,6 +6,7 @@ import Control.Monad.Reader
 import Control.Concurrent (threadDelay)
 import Control.Lens
 import System.Environment
+import qualified Data.HashMap.Strict as M
 
 import Control.Workflow
 --import Control.Workflow.Coordinator.Local
@@ -55,4 +56,9 @@ build "wf" [t| SciFlow Int |] $ do
 main :: IO ()
 main = do
     [n] <- getArgs
-    mainWith defaultMainOpts{_n_workers = read n} 100 wf
+    let opt = defaultOpts
+            { _n_workers = read n
+            -- , _resources = ResourceConfig $ M.fromList [("S5", Resource Nothing Nothing Nothing)]
+            }
+
+    mainWith opt 100 wf
