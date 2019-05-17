@@ -46,9 +46,6 @@ class Coordinator coordinator where
     -- | Server initiation process
     initiate :: coordinator -> Process ()
 
-    -- | Server monitoring process
-    monitor :: coordinator -> Process ()
-
     -- | Server shutdown process
     shutdown :: coordinator -> Process ()
 
@@ -56,9 +53,6 @@ class Coordinator coordinator where
 
     -- | Get all workers.
     getWorkers :: coordinator -> STM [Worker]
-
-    -- | Add a worker to the worker pool.
-    addToPool :: coordinator -> Worker -> STM ()
 
     -- | Reserve a free worker. This function should block
     -- until a worker is reserved.

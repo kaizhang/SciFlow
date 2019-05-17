@@ -9,6 +9,7 @@ module Control.Workflow.Language
     , doc
     , nCore
     , memory
+    , queue
     , Workflow(..)
     , Builder
     , node
@@ -38,8 +39,9 @@ data Node = Node
 
 data NodeAttributes = NodeAttributes
     { _doc :: T.Text   -- ^ documentation
-    , _nCore :: Maybe Int
-    , _memory :: Maybe Int }
+    , _nCore :: Int
+    , _memory :: Int
+    , _queue :: Maybe String }
 
 makeLenses ''NodeAttributes
 
@@ -48,15 +50,16 @@ mkNode :: Name     -- ^ Template Haskell expression representing
        -> State NodeAttributes ()
        -> Node
 mkNode fun attrSetter 
-    | isNothing core && isNothing mem = Node fun Nothing False
-    | otherwise = Node fun (Just $ Resource core mem) False
+    | isNothing core && isNothing mem && isNothing (_queue attr) = Node fun Nothing False
+    | otherwise = Node fun (Just $ Resource core mem (_queue attr)) False
   where
-    core = _nCore attr
-    mem = _memory attr
+    core = if _nCore attr > 1 then Just $ _nCore attr else Nothing
+    mem = if _memory attr > 0 then Just $ _memory attr else Nothing
     attr = execState attrSetter $ NodeAttributes
         { _doc = ""
-        , _nCore = Nothing
-        , _memory = Nothing }
+        , _nCore = 1
+        , _memory = -1
+        , _queue = Nothing }
 {-# INLINE mkNode #-}
 
 -- | Workflow declaration, containing a map of nodes and their parental processes.

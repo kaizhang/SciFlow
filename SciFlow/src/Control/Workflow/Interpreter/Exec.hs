@@ -50,7 +50,6 @@ runSciFlow coord transport store env sciflow = do
             initialNamespace = "executeLoop"
         nd <- newLocalNode transport $ _rtable $ _function_table sciflow
         pidInit <- forkProcess nd $ initiate coord
-        pidMonitor <- forkProcess nd $ monitor coord
         runProcess nd $ do
             res <- liftIO $ runExceptT $
                 runKatipContextT le initialContext initialNamespace $
@@ -59,7 +58,7 @@ runSciFlow coord transport store env sciflow = do
             case res of
                 Left ex -> error $ show ex
                 Right _ -> return ()
-            kill pidInit "Exit" >> kill pidMonitor "Exit"
+            kill pidInit "Exit"
 
 -- | Flow interpreter.
 execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)

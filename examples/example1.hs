@@ -33,10 +33,10 @@ build "wf" [t| SciFlow Int |] $ do
     nodePar "S1" 's1 $ return ()
     ["S0"] ~> "S1"
 
-    node "S2" 's2 $ memory .= Just 50000
-    node "S3" 's3 $ memory .= Just 50000
-    node "S4" 's4 $ return ()
-    node "S5" 's5 $ return ()
+    node "S2" 's2 $ memory .= 30
+    node "S3" 's3 $ memory .= 30
+    node "S4" 's4 $ nCore .= 10
+    node "S5" 's5 $ queue .= Just "gpu"
     node "S6" 's6 $ return ()
     node "S7" 's7 $ return ()
     ["S0"] ~> "S2"

@@ -37,6 +37,7 @@ library
     , temporary
     , text
     , transformers
+    , random
     , SciFlow
 
   hs-source-dirs:      src

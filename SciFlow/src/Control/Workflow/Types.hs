@@ -68,6 +68,7 @@ ustep = effect . UStep
 data Resource = Resource
     { _num_cpu :: Maybe Int
     , _total_memory :: Maybe Int    -- ^ memory in MB
+    , _submit_queue :: Maybe String
     } deriving (Eq, Generic, Show)
 
 instance Binary Resource

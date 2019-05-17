@@ -38,11 +38,9 @@ instance Coordinator Local where
         (Local <$> liftIO (newTMVarIO 0) <*> return config) >>= f
 
     initiate _ = return ()
-    monitor _ = return ()
     shutdown _ = return ()
     startClient _ _ = return ()
     getWorkers _ = return []
-    addToPool _ _ = return ()
 
     reserve (Local counter config) _ = liftIO tryReserve >> getSelfPid
       where

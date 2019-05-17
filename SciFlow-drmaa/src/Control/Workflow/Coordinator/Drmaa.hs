@@ -12,6 +12,7 @@ module Control.Workflow.Coordinator.Drmaa
     ) where
 
 import           Control.Monad.IO.Class                      (liftIO)
+import Control.Monad (replicateM)
 import Network.HostName (getHostName)
 import qualified Data.HashMap.Strict as M
 import qualified DRMAA as D
@@ -23,7 +24,7 @@ import Data.List (foldl')
 import Control.Concurrent.STM
 import Control.Concurrent (threadDelay)
 import Control.Monad (forever)
-import System.Environment (getArgs, getExecutablePath)
+import System.Environment (getArgs, getExecutablePath, getEnv)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
 import Control.Distributed.Process.Node
 import Path (parseAbsDir)
@@ -32,10 +33,24 @@ import System.Directory (makeAbsolute)
 import Control.Concurrent.MVar
 import Text.Printf (printf)
 import Data.Maybe (fromMaybe)
+import System.Random (randomRIO)
 
 import Control.Workflow.Coordinator
 import Control.Workflow.Types
 import Control.Workflow.Interpreter.Exec
+
+data MainOpts = MainOpts
+    { _store_path :: FilePath
+    , _master_addr :: String
+    , _master_port :: Int
+    , _n_workers :: Int }
+
+defaultMainOpts :: MainOpts
+defaultMainOpts = MainOpts
+    { _store_path = "sciflow_db"
+    , _master_addr = "192.168.0.1"
+    , _master_port = 8888
+    , _n_workers = 5 }
 
 mainWith :: Binary env
          => MainOpts
@@ -51,8 +66,10 @@ mainWith MainOpts{..} env wf = do
             , _cmd = (exePath, ["--slave"])
             , _address = host
             , _port = port
-            , _memory_format = "--mem=%d"
-            , _drmaa_parameters = "" }
+            , _cpu_format = "--ntasks-per-node=%d" 
+            , _memory_format = "--mem=%d000"
+            , _queue_format = "-p %s"
+            , _drmaa_parameters = Nothing }
     withCoordinator config $ \drmaa -> getArgs >>= \case
         ["--slave"] -> startClient drmaa $ _function_table wf
         _ -> do
@@ -67,42 +84,42 @@ data DrmaaConfig = DrmaaConfig
     , _cmd :: (FilePath, [String])
     , _address :: String
     , _port :: Int
-    , _memory_format :: String   -- ^ How to specify memory, default: "--mem=%d"
-    , _drmaa_parameters :: String -- ^ additional drmaa parameters
+    , _cpu_format :: String   -- ^ How to specify cpu number, default: "--ntasks-per-node=%d"
+    , _memory_format :: String   -- ^ How to specify memory, default: "--mem=%dG"
+    , _queue_format :: String
+    , _drmaa_parameters :: Maybe String -- ^ additional drmaa parameters
     }
 
-type WorkerPool = TMVar (M.HashMap ProcessId Worker)
-
 data Drmaa = Drmaa
-    { _worker_pool :: WorkerPool
+    { _worker_pool :: TMVar WorkerPool
     , _config :: DrmaaConfig
     , _new_worker :: MVar ProcessId }
 
 instance Coordinator Drmaa where
     type Config Drmaa = DrmaaConfig
 
-    withCoordinator config f = D.withSession $ liftIO ( Drmaa <$>
-        newTMVarIO M.empty <*> return config <*> newEmptyMVar ) >>= f
+    withCoordinator config f = D.withSession $ liftIO drmaa >>= f
+      where
+        drmaa = Drmaa <$> newTMVarIO (WorkerPool 0 M.empty) <*>
+            return config <*> newEmptyMVar
 
     initiate coord = do
         getSelfPid >>= register "SciFlow_master"
-        forever $ (expect :: Process ProcessId) >>=
-            liftIO . putMVar (_new_worker coord)
-
-    -- | Kill idle worker periodically.
-    monitor coord = forever $ liftIO (threadDelay 5000000) >> killIdleWorkers
+        -- Kill idle worker periodically.
+        forever $ liftIO (threadDelay 5000000) >> killIdleWorkers
       where
         killIdleWorkers = liftIO (atomically getIdleWorkers) >>= \case
             Nothing -> return ()
             Just (workers, pool) -> do
                 mapM_ (flip send Shutdown) workers
                 liftIO $ atomically $ putTMVar (_worker_pool coord) $
-                    foldl' (flip M.delete) pool workers
-        getIdleWorkers = filter ((==Idle) . _worker_status) <$> getWorkers coord >>= \case
-            [] -> return Nothing
-            x -> do
-                pool <- takeTMVar (_worker_pool coord)
-                return $ Just (map _worker_id x, pool)
+                    foldl' (flip removeWorker) pool workers
+        getIdleWorkers = filter ((==Idle) . _worker_status) <$>
+            getWorkers coord >>= \case
+                [] -> return Nothing
+                x -> do
+                    pool <- takeTMVar $ _worker_pool coord
+                    return $ Just (map _worker_id x, pool)
 
     shutdown coord = do
         liftIO $ putStrLn "shutdown all workers"
@@ -117,15 +134,16 @@ instance Coordinator Drmaa where
         runProcess node $ do
             let serverAddr = NodeId $ EndPointAddress $ B.intercalate ":" $
                     [B.pack $ _address _config, B.pack $ show $ _port _config, "0"]
-            nd <- searchServer serverAddr
-            liftIO $ putStrLn $ "Connected to " ++ show nd
-            getSelfPid >>= send nd
+            -- Link to the main process
+            linkNode serverAddr
+            serverPid <- liftIO (getEnv "master_id") >>= searchServer serverAddr
+            getSelfPid >>= send serverPid
             (expect :: Process Signal) >>= \case
                 Shutdown -> return ()
       where
-        searchServer :: NodeId -> Process ProcessId
-        searchServer server = do
-            whereisRemoteAsync server "SciFlow_master"
+        searchServer :: NodeId -> String -> Process ProcessId
+        searchServer server name = do
+            whereisRemoteAsync server name
             expectTimeout 1000000 >>= \case
                 Just (WhereIsReply _ (Just sid)) -> return sid
                 _ -> liftIO (putStrLn "Server not found") >> terminate
@@ -135,66 +153,82 @@ instance Coordinator Drmaa where
                 Right trsp -> return trsp
         tryCreateTransport _ _ = error "Failed to create transport"
 
-    getWorkers Drmaa{..} = M.elems <$> readTMVar _worker_pool
-
-    addToPool Drmaa{..} worker =
-        (M.insert (_worker_id worker) worker <$> takeTMVar _worker_pool) >>= 
-            putTMVar _worker_pool
+    getWorkers Drmaa{..} = M.elems . _cur_workers <$> readTMVar _worker_pool
 
     reserve coord@Drmaa{..} wc = tryReserve >>= \case
+        -- Queue is full
         Nothing -> liftIO (threadDelay 1000000) >> reserve coord wc
+        -- Idle worker exist
         Just (Right nd) -> return nd
-        Just (Left pool) -> liftIO $ do
-            wid <- spawnWorker _config wc >> takeMVar _new_worker
-            let worker = Worker wid Working wc
-            atomically $ putTMVar _worker_pool $
-                M.insert wid worker pool
-            putStrLn $ "Found a new worker: " ++ show wid
-            return $ wid
+        -- Try to get a new worker
+        Just (Left pool) -> do
+            liftIO $ atomically $ putTMVar _worker_pool $
+                pool{_len_waitlist = _len_waitlist pool + 1}
+            worker <- spawnWorker _config wc
+            liftIO $ atomically $ do
+                pool' <- addWorker (_worker_id worker)
+                    worker{_worker_status = Working } <$> takeTMVar _worker_pool
+                putTMVar _worker_pool $
+                    pool'{_len_waitlist = _len_waitlist pool' - 1}
+            liftIO $ putStrLn $ "Found a new worker: " ++ show (_worker_id worker)
+            return $ _worker_id worker
       where
         -- Try reserving a work, return the worker id if succeed; return Nothing
         -- if no worker is available; return the coordinator lock if a new worker
         -- is going to be spawned.
         tryReserve = liftIO $ atomically $ do
             workers <- getWorkers coord
+            waiting <- _len_waitlist <$> readTMVar _worker_pool
             case filter isQualified workers of
                 (w:_) -> do
                     setWorkerStatus coord (_worker_id w) Working
                     return $ Just $ Right $ _worker_id w
-                [] -> if length workers < _queue_size _config
+                [] -> if length workers + waiting < _queue_size _config
                     then Just . Left <$> takeTMVar _worker_pool
                     else return Nothing
         isQualified Worker{..} = _worker_status == Idle && wc == _worker_config
    
     freeWorker coord worker = liftIO $ atomically $ setWorkerStatus coord worker Idle
 
--- | Spawn a new worker
-spawnWorker :: DrmaaConfig -> Maybe Resource -> IO ()
-spawnWorker config wc = D.runJob exe args attr >>= \case
-    Left err -> error err
-    Right _ -> return ()
+data WorkerPool = WorkerPool
+    { _len_waitlist :: Int
+    , _cur_workers :: M.HashMap ProcessId Worker }
+
+addWorker :: ProcessId ->  Worker -> WorkerPool -> WorkerPool
+addWorker pid worker (WorkerPool n p) = WorkerPool n $ M.insert pid worker p
+{-# INLINE addWorker #-}
+
+removeWorker :: ProcessId -> WorkerPool -> WorkerPool
+removeWorker pid (WorkerPool n p) = WorkerPool n $ M.delete pid p
+{-# INLINE removeWorker #-}
+
+setStatus :: ProcessId -> WorkerStatus -> WorkerPool -> WorkerPool
+setStatus pid status (WorkerPool n p) = WorkerPool n $
+    M.adjust (\x -> x {_worker_status = status}) pid p
+{-# INLINE setStatus #-}
+
+setWorkerStatus Drmaa{..} host status = (setStatus host status <$> takeTMVar _worker_pool) >>=
+    putTMVar _worker_pool
+
+spawnWorker :: DrmaaConfig -> Maybe Resource -> Process Worker
+spawnWorker config wc = do
+    procName <- liftIO $ replicateM 16 $ randomRIO ('a', 'z')
+    getSelfPid >>= register procName
+    let attr = D.defaultJobAttributes
+            { D._env = [("master_id", procName)]
+            , D._native_specification = Just paras }
+    liftIO $ D.runJob exe args attr >>= \case
+        Left err -> error err
+        Right _ -> return ()
+    pid <- expect 
+    return $ Worker pid Idle wc
   where
-    attr = D.defaultJobAttributes
-        { D._env = []
-        , D._native_specification = Nothing }
     (exe, args) = _cmd config
-    mem = fromMaybe "" $ fmap (printf (_memory_format config)) $
+    cpu = fromMaybe [] $ fmap (return . printf (_cpu_format config)) $
+        wc >>= _num_cpu
+    mem = fromMaybe [] $ fmap (return . printf (_memory_format config)) $
         wc >>= _total_memory 
-    paras = _drmaa_parameters config <> " " <> mem
-
-setWorkerStatus Drmaa{..} host status =
-    (M.adjust (\x -> x {_worker_status = status}) host <$> takeTMVar _worker_pool) >>=
-        putTMVar _worker_pool
-
-data MainOpts = MainOpts
-    { _store_path :: FilePath
-    , _master_addr :: String
-    , _master_port :: Int
-    , _n_workers :: Int }
-
-defaultMainOpts :: MainOpts
-defaultMainOpts = MainOpts
-    { _store_path = "sciflow_db"
-    , _master_addr = "192.168.0.1"
-    , _master_port = 8888
-    , _n_workers = 5 }
+    q = fromMaybe [] $ fmap (return . printf (_queue_format config)) $
+        wc >>= _submit_queue
+    paras = unwords $ maybe [] return (_drmaa_parameters config) ++ cpu ++ mem ++ q
+{-# INLINE spawnWorker #-}
