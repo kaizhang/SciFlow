@@ -69,6 +69,3 @@ instance C.Category A where
 instance Arrow A where
     arr _ = A $ return ()
     A f *** A g = A (f >> g)
-
-instance ArrowChoice A where
-    left (A a) = A a

@@ -20,8 +20,9 @@ library
     Control.Workflow
     Control.Workflow.Language
     Control.Workflow.Language.TH
-    Control.Workflow.Interpreter.FunctionTable
     Control.Workflow.Interpreter.Exec
+    Control.Workflow.Interpreter.FunctionTable
+    Control.Workflow.Interpreter.Visualize
     Control.Workflow.Coordinator
     Control.Workflow.Coordinator.Local
     Control.Workflow.Types
@@ -53,6 +54,7 @@ library
     , text
     , template-haskell
     , transformers
+    , pretty
 
   hs-source-dirs:      src
   default-language:    Haskell2010

@@ -7,6 +7,7 @@ import Control.Concurrent (threadDelay)
 import Control.Lens
 import System.Environment
 import qualified Data.HashMap.Strict as M
+import Control.Workflow.Interpreter.Visualize
 
 import Control.Workflow
 import Control.Workflow.Coordinator.Local
@@ -61,4 +62,6 @@ main = do
             -- , _resources = ResourceConfig $ M.fromList [("S5", Resource Nothing Nothing Nothing)]
             }
 
+    putStrLn $ showDiagram $ toDiagram $ _flow wf
+    mapM_ print $ toGraph $ toDiagram $ _flow wf
     mainWith opt 100 wf
