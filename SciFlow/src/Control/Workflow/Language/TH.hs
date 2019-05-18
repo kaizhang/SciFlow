@@ -6,6 +6,7 @@
 module Control.Workflow.Language.TH (build) where
 
 import Control.Arrow.Free (Free, mapA, effect)
+import Control.Arrow (arr)
 import Control.Monad.Reader
 import Data.Binary (Binary)
 import Data.Typeable (Typeable)
@@ -53,7 +54,7 @@ compile name sig wf = do
         let funDecs = M.elems $ M.fromList $ concatMap snd res
 
         -- main definition
-        main <- link (map fst res) [| ustep $ const $ return () |]
+        main <- link (map fst res) [| arr $ const () |]
 
         return [ValD (VarP nm) (NormalB main) funDecs]
 

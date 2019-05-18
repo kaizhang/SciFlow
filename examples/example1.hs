@@ -13,6 +13,9 @@ import Control.Workflow
 import Control.Workflow.Coordinator.Local
 --import Control.Workflow.Coordinator.Drmaa
 
+sx :: () -> ReaderT Int IO String
+sx = return . const "TEST"
+
 s0 :: () -> ReaderT Int IO [Int]
 s0 = return . const [1..10]
 
@@ -31,6 +34,8 @@ s8 (a,b,c,d,e,f) = liftIO $ threadDelay 10000000 >>  print [a,b,c,d,e,f]
 s9 = liftIO . print 
     
 build "wf" [t| SciFlow Int |] $ do
+    node "SX" 'sx $ return ()
+
     node "S0" 's0 $ return ()
     nodePar "S1" 's1 $ return ()
     ["S0"] ~> "S1"

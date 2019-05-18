@@ -9,17 +9,16 @@ import           Language.Haskell.TH
 link :: [String]  -- a list of parents
      -> ExpQ      -- child
      -> ExpQ
-link xs x = case xs of
-    [] -> [| (ustep $ \() -> return ()) >>> $x |]
-    [s] -> [| $(varE $ mkName s) >>> $x |]
-    [s1,s2] -> [| linkA2 $(varE $ mkName s1) $(varE $ mkName s2) $x |]
-    [s1,s2,s3] -> [| linkA3 $(varE $ mkName s1) $(varE $ mkName s2) 
-        $(varE $ mkName s3) $x |]
-    [s1,s2,s3,s4] -> [| linkA4 $(varE $ mkName s1) $(varE $ mkName s2) 
-        $(varE $ mkName s3) $(varE $ mkName s4) $x |]
-    [s1,s2,s3,s4,s5] -> [| linkA5 $(varE $ mkName s1) $(varE $ mkName s2) 
-        $(varE $ mkName s3) $(varE $ mkName s4) $(varE $ mkName s5) $x |]
-    _ -> linkAN (map mkName xs) x
+link [] x = x
+link [s] x = [| $(varE $ mkName s) >>> $x |]
+link [s1,s2] x = [| linkA2 $(varE $ mkName s1) $(varE $ mkName s2) $x |]
+link [s1,s2,s3] x = [| linkA3 $(varE $ mkName s1) $(varE $ mkName s2) 
+    $(varE $ mkName s3) $x |]
+link [s1,s2,s3,s4] x = [| linkA4 $(varE $ mkName s1) $(varE $ mkName s2) 
+    $(varE $ mkName s3) $(varE $ mkName s4) $x |]
+link [s1,s2,s3,s4,s5] x = [| linkA5 $(varE $ mkName s1) $(varE $ mkName s2) 
+    $(varE $ mkName s3) $(varE $ mkName s4) $(varE $ mkName s5) $x |]
+link xs x = linkAN (map mkName xs) x
 {-# INLINE link #-}
 
 linkA2 :: Arrow arr => arr a b1 -> arr a b2 -> arr (b1, b2) c -> arr a c
@@ -65,14 +64,3 @@ linkAN as f = [| $arr1 >>> arr $arr2 >>> $f |]
         vars = map (\i -> mkName $ "x" ++ show i) ([1..n] :: [Int])
     n = length as
 {-# INLINE linkAN #-}
-
-{-
-zipA4 :: Arrow arr
-      => arr i o1
-      -> arr i o2
-      -> arr i o3
-      -> arr i o4
-      -> arr i (o1, o2, o3, o4)
-zipA4 f1 f2 f3 f4 = arr (\x -> (x,(x,x))) >>> f *** (g *** h) >>> arr (\(x,(y,z)) -> (x,y,z))
- 
--}
