@@ -9,8 +9,8 @@ import System.Environment
 import qualified Data.HashMap.Strict as M
 
 import Control.Workflow
---import Control.Workflow.Coordinator.Local
-import Control.Workflow.Coordinator.Drmaa
+import Control.Workflow.Coordinator.Local
+--import Control.Workflow.Coordinator.Drmaa
 
 s0 :: () -> ReaderT Int IO [Int]
 s0 = return . const [1..10]

@@ -25,12 +25,13 @@ import Control.Distributed.Process.MonadBaseControl ()
 import qualified Data.ByteString.Lazy                             as BS
 import qualified Data.HashMap.Strict as M
 import           Control.Exception.Safe                      (bracket)
-import           System.IO                                   (stderr)
+import           System.IO                                   (stdout)
 import Network.Transport (Transport)
 import Data.Binary (Binary(..), encode, decode)
 import           Katip
 import           Path
 import Control.Concurrent.MVar
+import qualified Data.Text as T
 
 import Control.Workflow.Types
 import Control.Workflow.Coordinator
@@ -44,23 +45,22 @@ runSciFlow :: (Coordinator coordinator, Binary env)
            -> SciFlow env
            -> IO ()
 runSciFlow coord transport store resource env sciflow = do
-    handleScribe <- mkHandleScribe ColorIfTerminal stderr InfoS V2
+    handleScribe <- mkHandleScribe ColorIfTerminal stdout InfoS V0
     let mkLogEnv = registerScribe "stderr" handleScribe defaultScribeSettings =<<
-            initLogEnv "SciFlow" "production"
+            initLogEnv mempty ""
     bracket mkLogEnv closeScribes $ \le -> do
-        let initialContext = ()
-            initialNamespace = "executeLoop"
         nd <- newLocalNode transport $ _rtable $ _function_table sciflow
         pidInit <- forkProcess nd $ initiate coord
         runProcess nd $ do
             res <- liftIO $ flip runReaderT resource $ runExceptT $
-                runKatipContextT le initialContext initialNamespace $
-                runAsyncA (execFlow nd coord store env sciflow) () 
+                runKatipT le $ runAsyncA (execFlow nd coord store env sciflow) () 
             shutdown coord
             case res of
                 Left ex -> error $ show ex
                 Right _ -> return ()
             kill pidInit "Exit"
+
+type FlowMonad = KatipT (ExceptT SomeException (ReaderT ResourceConfig IO))
 
 -- | Flow interpreter.
 execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
@@ -69,12 +69,11 @@ execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
          -> CS.ContentStore
          -> env
          -> SciFlow env
-         -> AsyncA (KatipContextT (ExceptT SomeException (ReaderT ResourceConfig IO))) () ()
+         -> AsyncA FlowMonad () ()
 execFlow localNode coord store env sciflow = eval (AsyncA . runFlow') $ _flow sciflow
   where
-    runFlow' (Step w) = lift . runJob localNode coord store (_function_table sciflow) env w
-    runFlow' (UStep f) = \x -> 
-        lift $ lift $ liftIO $ runReaderT (f x) env
+    runFlow' (Step w) = runJob localNode coord store (_function_table sciflow) env w
+    runFlow' (UStep f) = \x -> liftIO $ runReaderT (f x) env
 
 runJob :: (Coordinator coordinator, Binary env)
        => LocalNode
@@ -83,28 +82,29 @@ runJob :: (Coordinator coordinator, Binary env)
        -> FunctionTable
        -> env
        -> Job env i o
-       -> (i -> ExceptT SomeException (ReaderT ResourceConfig IO) o)
+       -> (i -> FlowMonad o)
 runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key) ->
     AsyncA $ \i -> do
         let chash = key i
             cleanUp ex = do
                 CS.removeFailed store chash
-                throwError ex
+                lift $ throwError ex
             input | _job_parallel = encode [i]
                   | otherwise = encode i
             decode' x | _job_parallel = let [r] = decode x in r
                       | otherwise = decode x
         result <- liftIO newEmptyMVar
+        -- Block if pending as one node can be executed multiple times
         CS.waitUntilComplete store chash >>= \case
             Just item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
-            Nothing -> handleAny cleanUp $ do
+            _ -> handleAny cleanUp $ do
+                logMsg mempty InfoS $ ls $ "Running " <> T.unpack _job_name <> ": " <> show chash
                 fp <- CS.markPending store chash
                 jobRes <- lift $ reader (M.lookup _job_name . _resource_config) >>= \case
                     Nothing -> return _job_resource
                     r -> return r
                 liftIO $ runProcess localNode $ do
                     pid <- reserve coord jobRes
-                    liftIO $ putStrLn $ "Working: " ++ show chash
                     call (_dict rf) (processNodeId pid)
                         ((_table rf) (_job_name, encode env, input)) >>= \case
                             Just r -> do
