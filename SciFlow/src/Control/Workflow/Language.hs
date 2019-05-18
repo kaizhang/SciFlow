@@ -34,8 +34,10 @@ import Control.Workflow.Types (Resource(..))
 -- | A computation node.
 data Node = Node
     { _node_function :: Name  -- ^ a function with type: a -> ReaderT env IO b
-    , _node_job_resource :: Maybe Resource
-    , _node_parallel :: Bool }
+    , _node_job_resource :: Maybe Resource   -- ^ Computational resource config
+    , _node_parallel :: Bool  -- ^ Should the job be run in parallel
+    , _node_doc :: T.Text     -- ^ Documentation
+    }
 
 data NodeAttributes = NodeAttributes
     { _doc :: T.Text   -- ^ documentation
@@ -49,10 +51,10 @@ mkNode :: Name     -- ^ Template Haskell expression representing
                    -- functions with type @a -> IO b@.
        -> State NodeAttributes ()
        -> Node
-mkNode fun attrSetter 
-    | isNothing core && isNothing mem && isNothing (_queue attr) = Node fun Nothing False
-    | otherwise = Node fun (Just $ Resource core mem (_queue attr)) False
+mkNode fun attrSetter = Node fun res False $ _doc attr
   where
+    res | isNothing core && isNothing mem && isNothing (_queue attr) = Nothing
+        | otherwise = Just $ Resource core mem $ _queue attr
     core = if _nCore attr > 1 then Just $ _nCore attr else Nothing
     mem = if _memory attr > 0 then Just $ _memory attr else Nothing
     attr = execState attrSetter $ NodeAttributes

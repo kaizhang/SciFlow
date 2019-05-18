@@ -5,16 +5,13 @@
 
 module Control.Workflow.Language.TH (build) where
 
-import Control.Arrow.Free (Free, mapA, effect)
+import Control.Arrow.Free (mapA, effect)
 import Control.Arrow (arr)
-import Control.Monad.Reader
-import Data.Binary (Binary)
-import Data.Typeable (Typeable)
 import qualified Data.Text as T
 import           Language.Haskell.TH
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
-import Control.Funflow.ContentHashable (contentHash, ContentHashable)
+import Control.Funflow.ContentHashable (contentHash)
 import Control.Monad.Identity (Identity(..))
 import Control.Monad.State.Lazy (StateT, get, put, lift, execStateT, execState)
 
@@ -72,19 +69,17 @@ mkDefs wf x = do
   where
     define :: T.Text
            -> StateT (M.HashMap T.Text FunDef) Q ()
-    define nd = do
+    define nid = do
         mapM_ define ps
         funDefs <- get 
         let parentNames = map (fst . flip (M.lookupDefault undefined) funDefs) ps
-        e <- lift $ link parentNames $ if _node_parallel
-            then [| mkJobP nd $(varE _node_function) _node_job_resource |]
-            else [| mkJob nd $(varE _node_function) _node_job_resource |]
+        e <- lift $ link parentNames $ mkJob nid $
+            M.lookupDefault (errMsg nid) nid $ _nodes wf
         let dec = (ndName, ValD (VarP $ mkName ndName) (NormalB e) [])
-        put $ M.insert nd dec funDefs
+        put $ M.insert nid dec funDefs
       where
-        Node{..} = M.lookupDefault (errMsg nd) nd $ _nodes wf
-        ps = M.lookupDefault [] nd $ _parents wf
-        ndName = T.unpack $ "f_" <> nd
+        ps = M.lookupDefault [] nid $ _parents wf
+        ndName = T.unpack $ "f_" <> nid
         errMsg = error . ("Node not found: " ++) .  T.unpack
 {-# INLINE mkDefs #-}
      
@@ -95,26 +90,20 @@ getSinks wf = filter (\x -> not $ S.member x ps) $ M.keys $ _nodes wf
     ps = S.fromList $ concat $ M.elems $ _parents wf
 {-# INLINE getSinks #-}
 
-mkJob :: (Binary i, Binary o, ContentHashable Identity i)
-      => T.Text -> (i -> ReaderT env IO o) -> Maybe Resource -> Free (Flow env) i o
-mkJob n f config = step job
-  where
-    job = Job
-        { _job_name = n 
-        , _job_resource = config
-        , _job_parallel = False
-        , _job_action = effect $
-            Action f (\i -> runIdentity $ contentHash (n, i)) }
-{-# INLINE mkJob #-}
-
-mkJobP :: (Binary i, Binary o, ContentHashable Identity i, Typeable i)
-       => T.Text -> (i -> ReaderT env IO o) -> Maybe Resource -> Free (Flow env) [i] [o]
-mkJobP n f config = step job
-  where
-    job = Job
-        { _job_name = n 
-        , _job_resource = config
+mkJob :: T.Text -> Node -> ExpQ
+mkJob nid Node{..}
+    | _node_parallel = [| step $ Job
+        { _job_name = nid
+        , _job_resource = _node_job_resource
         , _job_parallel = True
-        , _job_action = mapA $ effect $
-            Action f (\i -> runIdentity $ contentHash (n, i)) }
-{-# INLINE mkJobP #-}
+        , _job_action = mapA $ effect $ Action
+            $(varE _node_function) (\i -> runIdentity $ contentHash (nid, i))
+        } |]
+    | otherwise = [| step $ Job
+        { _job_name = nid
+        , _job_resource = _node_job_resource
+        , _job_parallel = False
+        , _job_action = effect $ Action
+            $(varE _node_function) (\i -> runIdentity $ contentHash (nid, i))
+        } |]
+{-# INLINE mkJob #-}
