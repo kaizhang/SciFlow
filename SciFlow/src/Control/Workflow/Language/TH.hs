@@ -94,6 +94,7 @@ mkJob :: T.Text -> Node -> ExpQ
 mkJob nid Node{..}
     | _node_parallel = [| step $ Job
         { _job_name = nid
+        , _job_descr = _node_doc
         , _job_resource = _node_job_resource
         , _job_parallel = True
         , _job_action = mapA $ effect $ Action
@@ -101,6 +102,7 @@ mkJob nid Node{..}
         } |]
     | otherwise = [| step $ Job
         { _job_name = nid
+        , _job_descr = _node_doc
         , _job_resource = _node_job_resource
         , _job_parallel = False
         , _job_action = effect $ Action

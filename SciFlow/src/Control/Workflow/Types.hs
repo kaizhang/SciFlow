@@ -47,6 +47,7 @@ newtype ResourceConfig = ResourceConfig
 -- | The basic component/step of a workflow.
 data Job env i o = Job
     { _job_name   :: T.Text   -- ^ The name of the job
+    , _job_descr  :: T.Text   -- ^ The description of the job
     , _job_resource :: Maybe Resource   -- ^ The computational resource needed
     , _job_parallel :: Bool    -- ^ Whether to run this step in parallel
     , _job_action :: Choice (Action env) i o }   -- ^ The action to run

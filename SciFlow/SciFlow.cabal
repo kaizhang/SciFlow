@@ -22,7 +22,7 @@ library
     Control.Workflow.Language.TH
     Control.Workflow.Interpreter.Exec
     Control.Workflow.Interpreter.FunctionTable
-    Control.Workflow.Interpreter.Visualize
+    Control.Workflow.Interpreter.Graph
     Control.Workflow.Coordinator
     Control.Workflow.Coordinator.Local
     Control.Workflow.Types
@@ -35,26 +35,26 @@ library
       base >= 4.7 && < 5.0
     , bytestring
     , binary
-    , unordered-containers
     , directory
     , distributed-process == 0.7.*
     , distributed-process-monad-control
+    , exceptions
+    , funflow >= 1.4.1
+    , hashable
+    , katip
+    , lens >= 4.0
+    , mtl
     , network-transport == 0.5.*
     , network-transport-tcp
-    , exceptions
     , safe-exceptions
-    , funflow >= 1.4.1
-    , lens >= 4.0
-    , katip
-    , mtl
+    , stm
     , optparse-applicative >= 0.14.0.0
     , path
-    , stm
     , th-lift
     , text
     , template-haskell
     , transformers
-    , pretty
+    , unordered-containers
 
   hs-source-dirs:      src
   default-language:    Haskell2010
