@@ -21,7 +21,6 @@ module Control.Workflow.Language
 
 import Control.Arrow
 import qualified Data.Text as T
-import Control.Exception.Safe (Exception)
 import Control.Monad.State.Lazy (State)
 import qualified Data.HashMap.Strict as M
 import Control.Monad.State.Lazy (modify, execState)

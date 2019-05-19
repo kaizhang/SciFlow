@@ -95,11 +95,10 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key)
                       | otherwise = decode x
         result <- liftIO newEmptyMVar
         -- Block if pending as one node can be executed multiple times
-        CS.waitUntilComplete store chash >>= \case
-            Just item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
-            _ -> handleAny cleanUp $ do
+        CS.constructOrWait store chash >>= \case
+            CS.Complete item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
+            CS.Missing fp -> handleAny cleanUp $ do
                 logMsg mempty InfoS $ ls $ "Running " <> T.unpack _job_name <> ": " <> show chash
-                fp <- CS.markPending store chash
                 jobRes <- lift $ reader (M.lookup _job_name . _resource_config) >>= \case
                     Nothing -> return _job_resource
                     r -> return r
@@ -112,6 +111,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key)
                                 liftIO $ putMVar result r
                             _ -> error "error"
                 liftIO (takeMVar result) >>= writeStore store chash fp . decode'
+            _ -> undefined
     ) _job_action
   where
     simpleOutPath item = toFilePath $ CS.itemPath store item </> [relfile|out|]

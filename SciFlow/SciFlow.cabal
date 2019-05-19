@@ -47,9 +47,9 @@ library
     , lens >= 4.0
     , katip
     , mtl
-    , stm
     , optparse-applicative >= 0.14.0.0
     , path
+    , stm
     , th-lift
     , text
     , template-haskell
