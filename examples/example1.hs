@@ -13,8 +13,8 @@ import Control.Workflow.Interpreter.Graph (mkGraph)
 import Control.Workflow.Visualize 
 
 import Control.Workflow
---import Control.Workflow.Coordinator.Local
-import Control.Workflow.Coordinator.Drmaa
+import Control.Workflow.Coordinator.Local
+--import Control.Workflow.Coordinator.Drmaa
 
 sx :: () -> ReaderT Int IO String
 sx = return . const "TEST"
@@ -40,7 +40,7 @@ build "wf" [t| SciFlow Int |] $ do
     node "SX" 'sx $ return ()
 
     node "S0" 's0 $ return ()
-    nodePar "S1" 's1 $ return ()
+    nodePar "S1" [| \x -> {- error (show x) >> -} s1 x |] $ return ()
     ["S0"] ~> "S1"
 
     node "S2" 's2 $ memory .= 30

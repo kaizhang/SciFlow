@@ -45,12 +45,10 @@ library
     , mtl
     , network-transport == 0.5.*
     , network-transport-tcp
-    , safe-exceptions
     , stm
     , path
     , text
     , template-haskell
-    , transformers
     , unordered-containers
 
   hs-source-dirs:      src

@@ -13,18 +13,16 @@ import           Control.Arrow.Async
 import           Control.Arrow.Free                          (eval)
 import Control.Monad.Reader
 import Control.Monad.Except (ExceptT, throwError, runExceptT)
-import           Control.Exception.Safe                      (SomeException,
-                                                              handleAny)
+import Control.Monad.Catch (SomeException, handleAll, bracket)
 import           Control.Funflow.ContentHashable
 import qualified Control.Funflow.ContentStore                as CS
 import           Control.Monad.IO.Class                      (MonadIO, liftIO)
-import           Control.Monad.Trans.Class                   (lift)
+import           Control.Monad.Trans (lift)
 import Control.Distributed.Process (kill, processNodeId, call)
 import Control.Distributed.Process.Node (forkProcess, runProcess, newLocalNode, LocalNode)
 import Control.Distributed.Process.MonadBaseControl ()
 import qualified Data.ByteString.Lazy                             as BS
 import qualified Data.HashMap.Strict as M
-import           Control.Exception.Safe                      (bracket)
 import           System.IO                                   (stdout)
 import Network.Transport (Transport)
 import Data.Binary (Binary(..), encode, decode)
@@ -97,7 +95,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key)
         -- Block if pending as one node can be executed multiple times
         CS.constructOrWait store chash >>= \case
             CS.Complete item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
-            CS.Missing fp -> handleAny cleanUp $ do
+            CS.Missing fp -> handleAll cleanUp $ do
                 logMsg mempty InfoS $ ls $ "Running " <> T.unpack _job_name <> ": " <> show chash
                 jobRes <- lift $ reader (M.lookup _job_name . _resource_config) >>= \case
                     Nothing -> return _job_resource
