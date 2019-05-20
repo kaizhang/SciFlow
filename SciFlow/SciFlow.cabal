@@ -42,15 +42,12 @@ library
     , funflow >= 1.4.1
     , hashable
     , katip
-    , lens >= 4.0
     , mtl
     , network-transport == 0.5.*
     , network-transport-tcp
     , safe-exceptions
     , stm
-    , optparse-applicative >= 0.14.0.0
     , path
-    , th-lift
     , text
     , template-haskell
     , transformers

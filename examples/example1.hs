@@ -9,8 +9,7 @@ import qualified Data.Text.Lazy.IO                             as TL
 import System.Environment
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.HashMap.Strict as M
-import Control.Workflow.Interpreter.Visualize
-import Data.Aeson (encode)
+--import Control.Workflow.Interpreter.Visualize
 
 import Control.Workflow
 --import Control.Workflow.Coordinator.Local
@@ -70,5 +69,5 @@ main = do
             -- , _resources = ResourceConfig $ M.fromList [("S5", Resource Nothing Nothing Nothing)]
             }
 
-    B.putStrLn $ encode $ jsonCytoscape $ toGraph wf
+    --B.putStrLn $ encode $ jsonCytoscape $ toGraph wf
     mainWith opt 100 wf

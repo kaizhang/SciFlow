@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE GADTs #-}
 module Control.Workflow.Types
     ( SciFlow(..)
@@ -24,7 +25,7 @@ import qualified Data.ByteString.Lazy as B
 import qualified Data.HashMap.Strict as M
 import Control.Distributed.Process.Serializable (SerializableDict)
 import Control.Distributed.Process (Process, RemoteTable, Closure, Static)
-import Language.Haskell.TH.Lift (deriveLift)
+import Language.Haskell.TH.Syntax (Lift)
 
 -- | The core type, containing the workflow represented as a free arrow and 
 -- a function table for remote execution.
@@ -74,8 +75,6 @@ data Resource = Resource
     { _num_cpu :: Maybe Int   -- ^ The number of CPU needed
     , _total_memory :: Maybe Int    -- ^ Memory in GB
     , _submit_queue :: Maybe String -- ^ Job submitting queue
-    } deriving (Eq, Generic, Show)
+    } deriving (Eq, Generic, Show, Lift)
 
 instance Binary Resource
-
-deriveLift 'Resource

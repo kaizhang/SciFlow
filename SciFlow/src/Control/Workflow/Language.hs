@@ -1,22 +1,26 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Control.Workflow.Language
-    ( Node(..)
-    , NodeAttributes
-    , doc
-    , nCore
-    , memory
-    , queue
-    , Workflow(..)
-    , Builder
-    , node
+    ( -- * Defining workflows
+      node
     , nodePar
     , (~>)
     , path
     , namespace
+    , Workflow(..)
+    , Builder
+
+      -- * Lens for Attributes 
+    , doc
+    , nCore
+    , memory
+    , queue
+    , Node(..)
+    , NodeAttributes
+
+    , THExp(..)
     ) where
 
 import Control.Arrow
@@ -24,15 +28,14 @@ import qualified Data.Text as T
 import Control.Monad.State.Lazy (State)
 import qualified Data.HashMap.Strict as M
 import Control.Monad.State.Lazy (modify, execState)
-import Control.Lens (makeLenses)
 import Data.Maybe (isNothing)
-import           Language.Haskell.TH (Name)
+import           Language.Haskell.TH (ExpQ, Name, varE)
 
 import Control.Workflow.Types (Resource(..))
 
 -- | A computation node.
 data Node = Node
-    { _node_function :: Name  -- ^ a function with type: a -> ReaderT env IO b
+    { _node_function :: ExpQ  -- ^ a function with type: a -> ReaderT env IO b
     , _node_job_resource :: Maybe Resource   -- ^ Computational resource config
     , _node_parallel :: Bool  -- ^ Should the job be run in parallel
     , _node_doc :: T.Text     -- ^ Documentation
@@ -44,13 +47,30 @@ data NodeAttributes = NodeAttributes
     , _memory :: Int
     , _queue :: Maybe String }
 
-makeLenses ''NodeAttributes
+doc :: Functor f => (T.Text -> f T.Text) -> NodeAttributes -> f NodeAttributes
+doc x y = fmap (\newX -> y { _doc = newX }) (x (_doc y))
+{-# INLINE doc #-}
 
-mkNode :: Name     -- ^ Template Haskell expression representing
+nCore :: Functor f => (Int -> f Int) -> NodeAttributes -> f NodeAttributes
+nCore x y = fmap (\newX -> y { _nCore = newX }) (x (_nCore y))
+{-# INLINE nCore #-}
+
+memory :: Functor f => (Int -> f Int) -> NodeAttributes -> f NodeAttributes
+memory x y = fmap (\newX -> y { _memory = newX }) (x (_memory y))
+{-# INLINE memory #-}
+
+queue :: Functor f
+      => (Maybe String -> f (Maybe String))
+      -> NodeAttributes -> f NodeAttributes
+queue x y = fmap (\newX -> y { _queue = newX }) (x (_queue y))
+{-# INLINE queue #-}
+
+mkNode :: THExp q
+       => q        -- ^ Template Haskell expression representing
                    -- functions with type @a -> IO b@.
        -> State NodeAttributes ()
        -> Node
-mkNode fun attrSetter = Node fun res False $ _doc attr
+mkNode fun attrSetter = Node (mkExp fun) res False $ _doc attr
   where
     res | isNothing core && isNothing mem && isNothing (_queue attr) = Nothing
         | otherwise = Just $ Resource core mem $ _queue attr
@@ -74,8 +94,9 @@ instance Semigroup Workflow where
 type Builder = State Workflow
 
 -- | Declare a pure computational step.
-node :: T.Text   -- ^ Node id
-     -> Name     -- ^ Template Haskell expression representing
+node :: THExp q
+     => T.Text   -- ^ Node id
+     -> q        -- ^ Template Haskell expression representing
                  -- functions with type @a -> IO b@.
      -> State NodeAttributes ()
      -> Builder ()
@@ -85,8 +106,9 @@ node i f attrSetter = modify $ \wf ->
     nd = mkNode f attrSetter
 {-# INLINE node #-}
 
-nodePar :: T.Text   -- ^ Node id
-        -> Name     -- ^ Template Haskell expression representing
+nodePar :: THExp q
+        => T.Text   -- ^ Node id
+        -> q        -- ^ Template Haskell expression representing
                     -- functions with type @a -> IO b@.
         -> State NodeAttributes ()
         -> Builder ()
@@ -104,9 +126,9 @@ linkFromTo ps to = modify $ \wf ->
 -- | Declare the dependency between nodes.
 -- Example:
 --
--- > node' "step1" [| \() -> 1 :: Int |] $ return ()
--- > node' "step2" [| \() -> 2 :: Int |] $ return ()
--- > node' "step3" [| \(x, y) -> x * y |] $ return ()
+-- > node "step1" [| \() -> 1 :: Int |] $ return ()
+-- > node "step2" [| \() -> 2 :: Int |] $ return ()
+-- > node "step3" [| \(x, y) -> x * y |] $ return ()
 -- > ["step1", "step2"] ~> "step3"
 (~>) :: [T.Text] -> T.Text -> Builder ()
 (~>) = linkFromTo
@@ -128,3 +150,13 @@ namespace prefix builder = modify (st <>)
             parents = M.fromList $ map (add *** map add) $ M.toList _parents
         in Workflow nodes parents
     add x = prefix <> "_" <> x
+{-# INLINE namespace #-}
+
+class THExp q where
+    mkExp :: q -> ExpQ
+
+instance THExp Name where
+    mkExp = varE
+
+instance THExp ExpQ where
+    mkExp = id

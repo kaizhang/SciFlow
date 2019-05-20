@@ -20,13 +20,15 @@ import Control.Workflow.Types
 import Control.Workflow.Interpreter.FunctionTable (mkFunTable)
 import Control.Workflow.Language.TH.Internal
 
-build :: String
-      -> TypeQ
+-- | Generate template haskell codes to define the workflow.
+build :: String   -- ^ The name of the compiled workflow
+      -> TypeQ    -- ^ The function signature
       -> Builder ()
       -> Q [Dec]
 build name sig builder = compile name sig wf
   where
     wf = execState builder $ Workflow M.empty M.empty
+{-# INLINE build #-}
 
 -- Generate codes from a DAG. This function will create functions defined in
 -- the builder. These pieces will be assembled to form a function that will
@@ -54,6 +56,7 @@ compile name sig wf = do
         main <- link (map fst res) [| arr $ const () |]
 
         return [ValD (VarP nm) (NormalB main) funDecs]
+{-# INLINE compile #-}
 
 type FunDef = (String, Dec)
 
@@ -98,7 +101,7 @@ mkJob nid Node{..}
         , _job_resource = _node_job_resource
         , _job_parallel = True
         , _job_action = mapA $ effect $ Action
-            $(varE _node_function) (\i -> runIdentity $ contentHash (nid, i))
+            $_node_function (\i -> runIdentity $ contentHash (nid, i))
         } |]
     | otherwise = [| step $ Job
         { _job_name = nid
@@ -106,6 +109,6 @@ mkJob nid Node{..}
         , _job_resource = _node_job_resource
         , _job_parallel = False
         , _job_action = effect $ Action
-            $(varE _node_function) (\i -> runIdentity $ contentHash (nid, i))
+            $_node_function (\i -> runIdentity $ contentHash (nid, i))
         } |]
 {-# INLINE mkJob #-}
