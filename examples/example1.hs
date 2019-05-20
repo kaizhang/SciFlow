@@ -9,7 +9,8 @@ import qualified Data.Text.Lazy.IO                             as TL
 import System.Environment
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.HashMap.Strict as M
---import Control.Workflow.Interpreter.Visualize
+import Control.Workflow.Interpreter.Graph (mkGraph)
+import Control.Workflow.Visualize 
 
 import Control.Workflow
 --import Control.Workflow.Coordinator.Local
@@ -44,7 +45,7 @@ build "wf" [t| SciFlow Int |] $ do
 
     node "S2" 's2 $ memory .= 30
     node "S3" 's3 $ memory .= 30
-    node "S4" 's4 $ nCore .= 10
+    node "S4" 's4 $ nCore .= 4
     node "S5" 's5 $ queue .= Just "gpu"
     node "S6" 's6 $ return ()
     node "S7" 's7 $ return ()
@@ -66,8 +67,8 @@ main = do
     [n] <- getArgs
     let opt = defaultOpts
             { _n_workers = read n
-            -- , _resources = ResourceConfig $ M.fromList [("S5", Resource Nothing Nothing Nothing)]
+            , _resources = ResourceConfig $
+                M.fromList [("S6", Resource (Just 2) Nothing Nothing)]
             }
-
-    --B.putStrLn $ encode $ jsonCytoscape $ toGraph wf
+    writeFile "example1.html" $ renderCytoscape $ mkGraph wf
     mainWith opt 100 wf
