@@ -15,7 +15,6 @@ import           Control.Category
 import qualified Data.Text          as T
 import           Prelude            hiding (id, (.))
 import qualified Data.HashSet as S
-import qualified Data.HashMap.Strict as M
 import Data.Hashable (Hashable(..))
 
 import Control.Workflow.Types
@@ -56,7 +55,7 @@ toEdges _ = []
 headD :: Diagram a b -> [Node]
 headD (S nd) = [nd]
 headD (Seq Ident g) = headD g
-headD (Seq f g) = headD f
+headD (Seq f _) = headD f
 headD (Par f g) = headD f ++ headD g
 headD _ = []
 {-# INLINE headD #-}
@@ -64,7 +63,7 @@ headD _ = []
 lastD :: Diagram a b -> [Node]
 lastD (S nd) = [nd]
 lastD (Seq f Ident) = lastD f
-lastD (Seq f g) = lastD g
+lastD (Seq _ g) = lastD g
 lastD (Par f g) = lastD f ++ lastD g
 lastD _ = []
 {-# INLINE lastD #-}

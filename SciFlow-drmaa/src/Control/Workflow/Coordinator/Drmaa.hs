@@ -35,6 +35,7 @@ import System.Random (randomRIO)
 import Control.Workflow.Coordinator
 import Control.Workflow
 import Control.Workflow.Interpreter.Exec
+import Control.Workflow.Utils
 
 mainWith :: Binary env
          => SciFlowOpts
@@ -152,7 +153,7 @@ instance Coordinator Drmaa where
                     worker{_worker_status = Working } <$> takeTMVar _worker_pool
                 putTMVar _worker_pool $
                     pool'{_len_waitlist = _len_waitlist pool' - 1}
-            liftIO $ putStrLn $ "Found a new worker: " ++ show (_worker_id worker)
+            infoS $ "Found a new worker: " ++ show (_worker_id worker)
             return $ _worker_id worker
       where
         -- Try reserving a work, return the worker id if succeed; return Nothing

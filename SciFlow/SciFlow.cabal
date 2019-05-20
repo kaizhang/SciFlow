@@ -26,6 +26,7 @@ library
     Control.Workflow.Coordinator
     Control.Workflow.Coordinator.Local
     Control.Workflow.Types
+    Control.Workflow.Utils
 
   other-modules:
     Paths_SciFlow
@@ -41,14 +42,15 @@ library
     , exceptions
     , funflow >= 1.4.1
     , hashable
-    , katip
     , mtl
     , network-transport == 0.5.*
     , network-transport-tcp
+    , rainbow
     , stm
     , path
     , text
     , template-haskell
+    , time
     , unordered-containers
 
   hs-source-dirs:      src

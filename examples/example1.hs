@@ -13,8 +13,8 @@ import Control.Workflow.Interpreter.Graph (mkGraph)
 import Control.Workflow.Visualize 
 
 import Control.Workflow
-import Control.Workflow.Coordinator.Local
---import Control.Workflow.Coordinator.Drmaa
+--import Control.Workflow.Coordinator.Local
+import Control.Workflow.Coordinator.Drmaa
 
 sx :: () -> ReaderT Int IO String
 sx = return . const "TEST"

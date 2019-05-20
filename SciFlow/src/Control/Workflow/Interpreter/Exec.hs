@@ -22,16 +22,17 @@ import Control.Distributed.Process (kill, processNodeId, call)
 import Control.Distributed.Process.Node (forkProcess, runProcess, newLocalNode, LocalNode)
 import Control.Distributed.Process.MonadBaseControl ()
 import qualified Data.ByteString.Lazy                             as BS
+import qualified Data.ByteString.Char8 as B
 import qualified Data.HashMap.Strict as M
 import           System.IO                                   (stdout)
 import Network.Transport (Transport)
 import Data.Binary (Binary(..), encode, decode)
-import           Katip
 import           Path
 import Control.Concurrent.MVar
 import qualified Data.Text as T
 
 import Control.Workflow.Types
+import Control.Workflow.Utils
 import Control.Workflow.Coordinator
 
 runSciFlow :: (Coordinator coordinator, Binary env)
@@ -43,22 +44,18 @@ runSciFlow :: (Coordinator coordinator, Binary env)
            -> SciFlow env
            -> IO ()
 runSciFlow coord transport store resource env sciflow = do
-    handleScribe <- mkHandleScribe ColorIfTerminal stdout InfoS V0
-    let mkLogEnv = registerScribe "stderr" handleScribe defaultScribeSettings =<<
-            initLogEnv mempty ""
-    bracket mkLogEnv closeScribes $ \le -> do
-        nd <- newLocalNode transport $ _rtable $ _function_table sciflow
-        pidInit <- forkProcess nd $ initiate coord
-        runProcess nd $ do
-            res <- liftIO $ flip runReaderT resource $ runExceptT $
-                runKatipT le $ runAsyncA (execFlow nd coord store env sciflow) () 
-            shutdown coord
-            case res of
-                Left ex -> error $ show ex
-                Right _ -> return ()
-            kill pidInit "Exit"
+    nd <- newLocalNode transport $ _rtable $ _function_table sciflow
+    pidInit <- forkProcess nd $ initiate coord
+    runProcess nd $ do
+        res <- liftIO $ flip runReaderT resource $ runExceptT $
+            runAsyncA (execFlow nd coord store env sciflow) () 
+        shutdown coord
+        case res of
+            Left ex -> error $ show ex
+            Right _ -> return ()
+        kill pidInit "Exit"
 
-type FlowMonad = KatipT (ExceptT SomeException (ReaderT ResourceConfig IO))
+type FlowMonad = ExceptT SomeException (ReaderT ResourceConfig IO)
 
 -- | Flow interpreter.
 execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
@@ -86,17 +83,18 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key)
         let chash = key i
             cleanUp ex = do
                 CS.removeFailed store chash
-                lift $ throwError ex
+                throwError ex
             input | _job_parallel = encode [i]
                   | otherwise = encode i
             decode' x | _job_parallel = let [r] = decode x in r
                       | otherwise = decode x
+        -- A Hack, because `runProcess` cannot return value.
         result <- liftIO newEmptyMVar
         -- Block if pending as one node can be executed multiple times
         CS.constructOrWait store chash >>= \case
             CS.Complete item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
             CS.Missing fp -> handleAll cleanUp $ do
-                logMsg mempty InfoS $ ls $ "Running " <> T.unpack _job_name <> ": " <> show chash
+                infoS $ showJobName _job_name chash <> ": Running ..."
                 jobRes <- lift $ reader (M.lookup _job_name . _resource_config) >>= \case
                     Nothing -> return _job_resource
                     r -> return r
@@ -108,6 +106,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key)
                                 freeWorker coord pid
                                 liftIO $ putMVar result r
                             _ -> error "error"
+                infoS $ showJobName _job_name chash <> ": Complete!"
                 liftIO (takeMVar result) >>= writeStore store chash fp . decode'
             _ -> undefined
     ) _job_action
