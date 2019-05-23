@@ -24,9 +24,7 @@ import Control.Monad (forever)
 import System.Environment (getArgs, getExecutablePath, getEnv)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
 import Control.Distributed.Process.Node
-import Path (parseAbsDir)
 import Network.Transport (EndPointAddress(..))
-import System.Directory (makeAbsolute)
 import Text.Printf (printf)
 import Data.Maybe (fromMaybe)
 import System.Random (randomRIO)
@@ -111,8 +109,8 @@ instance Coordinator Drmaa where
     startClient Drmaa{..} rf = do
         host <- getHostName
         transport <- tryCreateTransport host ([8000..8200] :: [Int])
-        node <- newLocalNode transport $ _rtable rf
-        runProcess node $ do
+        nd <- newLocalNode transport $ _rtable rf
+        runProcess nd $ do
             let serverAddr = NodeId $ EndPointAddress $ B.intercalate ":" $
                     [B.pack $ _address _config, B.pack $ show $ _port _config, "0"]
             -- Link to the main process
@@ -188,8 +186,10 @@ setStatus pid status (WorkerPool n p) = WorkerPool n $
     M.adjust (\x -> x {_worker_status = status}) pid p
 {-# INLINE setStatus #-}
 
+setWorkerStatus :: Drmaa -> ProcessId -> WorkerStatus -> STM ()
 setWorkerStatus Drmaa{..} host status = (setStatus host status <$> takeTMVar _worker_pool) >>=
     putTMVar _worker_pool
+{-# INLINE setWorkerStatus #-}
 
 spawnWorker :: DrmaaConfig -> Maybe Resource -> Process Worker
 spawnWorker config wc = do

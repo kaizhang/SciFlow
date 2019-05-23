@@ -32,10 +32,8 @@ library
     , hostname
     , mtl
     , stm
-    , path
     , temporary
     , text
-    , transformers
     , random
     , SciFlow
 

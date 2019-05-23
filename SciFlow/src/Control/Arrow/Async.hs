@@ -9,7 +9,6 @@ module Control.Arrow.Async where
 import           Control.Arrow
 import           Control.Category
 import           Control.Concurrent.Async.Lifted
-import           Control.Monad.Trans.Class       (MonadTrans, lift)
 import           Control.Monad.Trans.Control     (MonadBaseControl)
 import           Prelude                         hiding (id, (.))
 
@@ -34,9 +33,3 @@ instance MonadBaseControl IO m => ArrowChoice (AsyncA m) where
     right f = arr id +++ f
     f +++ g = (f >>> arr Left) ||| (g >>> arr Right)
     AsyncA f ||| AsyncA g = AsyncA (either f g)
-
--- | Lift an AsyncA through a monad transformer of the underlying monad.
-liftAsyncA :: (MonadTrans t, Monad m)
-           => AsyncA m i o
-           -> AsyncA (t m) i o
-liftAsyncA (AsyncA f) = AsyncA $ \i -> lift (f i)

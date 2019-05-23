@@ -30,7 +30,6 @@ library
     Control.Workflow.Utils
 
   other-modules:
-    Paths_SciFlow
     Control.Arrow.Free
     Control.Arrow.Async
     Control.Workflow.Language.TH.Internal
@@ -57,7 +56,6 @@ library
     , text
     , template-haskell
     , time
-    , transformers
     , th-lift-instances
     , unordered-containers
 
