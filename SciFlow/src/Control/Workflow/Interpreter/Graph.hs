@@ -72,7 +72,6 @@ toDiagram :: Free (Flow env) a b -> Diagram a b
 toDiagram = eval toDiagram'
   where
     toDiagram' (Step Job{..}) = S (Node _job_name _job_name _job_descr)
-    toDiagram' (UStep _) = undefined
 {-# INLINE toDiagram #-}
   
 data Diagram a b where

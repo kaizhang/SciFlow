@@ -68,7 +68,6 @@ execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
 execFlow localNode coord store env sciflow = eval (AsyncA . runFlow') $ _flow sciflow
   where
     runFlow' (Step w) = runJob localNode coord store (_function_table sciflow) env w
-    runFlow' (UStep f) = \x -> liftIO $ runReaderT (f x) env
 
 runJob :: (Coordinator coordinator, Binary env)
        => LocalNode

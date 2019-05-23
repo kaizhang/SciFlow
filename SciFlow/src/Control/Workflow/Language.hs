@@ -93,7 +93,7 @@ instance Semigroup Workflow where
 
 type Builder = State Workflow
 
--- | Declare a pure computational step.
+-- | Define a step.
 node :: THExp q
      => T.Text   -- ^ Node id
      -> q        -- ^ Template Haskell expression representing
@@ -106,6 +106,7 @@ node i f attrSetter = modify $ \wf ->
     nd = mkNode f attrSetter
 {-# INLINE node #-}
 
+-- | Define a step that will be executed in parallel.
 nodePar :: THExp q
         => T.Text   -- ^ Node id
         -> q        -- ^ Template Haskell expression representing
@@ -134,7 +135,7 @@ linkFromTo ps to = modify $ \wf ->
 (~>) = linkFromTo
 {-# INLINE (~>) #-}
 
--- | "@'path' [a, b, c]@" is equivalent to "@'link' a b >> 'link' b c@"
+-- | "@'path' [a, b, c]@" is equivalent to "@'[a] ~> b >> [b] ~> c@"
 path :: [T.Text] -> Builder ()
 path ns = sequence_ $ zipWith linkFromTo (map return $ init ns) $ tail ns
 {-# INLINE path #-}

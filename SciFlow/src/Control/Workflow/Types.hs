@@ -12,7 +12,6 @@ module Control.Workflow.Types
     , Action(..)
     , Flow(..)
     , step
-    , ustep
     ) where
 
 import Data.Binary (Binary)
@@ -62,13 +61,9 @@ data Action env i o where
 -- | Free arrow side effect.
 data Flow env i o where
     Step :: (Binary i, Binary o) => Job env i o -> Flow env i o
-    UStep :: (i -> ReaderT env IO o) -> Flow env i o   -- ^ `UStep` will not be cached.
 
 step :: (Binary i, Binary o) => Job env i o -> Free (Flow env) i o
 step job = effect $ Step job
-
-ustep :: (i -> ReaderT env IO o) -> Free (Flow env) i o
-ustep = effect . UStep 
 
 -- | Computational resource
 data Resource = Resource
