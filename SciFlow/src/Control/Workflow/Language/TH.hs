@@ -9,10 +9,9 @@ import Control.Arrow.Free (mapA, effect)
 import Control.Arrow (arr)
 import qualified Data.Text as T
 import           Language.Haskell.TH
+import Instances.TH.Lift ()
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
-import Control.Funflow.ContentHashable (contentHash)
-import Control.Monad.Identity (Identity(..))
 import Control.Monad.State.Lazy (StateT, get, put, lift, execStateT, execState)
 
 import Control.Workflow.Language
@@ -100,15 +99,13 @@ mkJob nid Node{..}
         , _job_descr = _node_doc
         , _job_resource = _node_job_resource
         , _job_parallel = True
-        , _job_action = mapA $ effect $ Action
-            $_node_function (\i -> runIdentity $ contentHash (nid, i))
+        , _job_action = mapA $ effect $ Action $_node_function 
         } |]
     | otherwise = [| step $ Job
         { _job_name = nid
         , _job_descr = _node_doc
         , _job_resource = _node_job_resource
         , _job_parallel = False
-        , _job_action = effect $ Action
-            $_node_function (\i -> runIdentity $ contentHash (nid, i))
+        , _job_action = effect $ Action $_node_function 
         } |]
 {-# INLINE mkJob #-}

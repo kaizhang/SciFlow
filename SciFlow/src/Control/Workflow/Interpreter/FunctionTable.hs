@@ -54,7 +54,6 @@ mkDict flow (nm, env, input) = do
             else return $ Left msg
         x -> return x
       where
-    go _ _ = A $ return ()
     runJob job = Right . encode <$>
         runReaderT (f (decode input)) (decode env)
       where

@@ -27,7 +27,6 @@ library
     , directory
     , distributed-process == 0.7.*
     , distributed-process-monad-control
-    , funflow
     , network-transport == 0.5.*
     , network-transport-tcp
     , hostname

@@ -1,9 +1,10 @@
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Control.Workflow.DataStore
     ( DataStore(..)
-    , Key(..)
+    , Key
     , mkKey
     , JobStatus(..)
     , openStore
@@ -13,22 +14,23 @@ module Control.Workflow.DataStore
     , markFailed
     , saveItem
     , fetchItem
+    , delRecord
     , queryStatus
     ) where
 
 import Control.Monad (unless)
-import Control.Funflow.ContentHashable (ContentHash, encodeHash)
-import Control.Concurrent.MVar
-import Control.Monad.Catch (bracket)
-import Data.Binary
+import Control.Concurrent.MVar (withMVar, newMVar, MVar)
+import Control.Monad.Catch (MonadMask, bracket)
+import Control.Monad.Identity (Identity(..))
+import Data.Binary (Binary, encode, decode)
+import Data.Typeable (Typeable, typeOf)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Catch (MonadMask)
 import Database.SQLite.Simple
 import GHC.Generics (Generic)
-import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
 import qualified Data.ByteString.Char8 as B
-import Text.Printf (printf)
+import qualified Crypto.Hash.SHA256 as C
+import Data.ByteArray.Encoding (convertToBase, Base(..))
 
 newtype DataStore = DataStore { _db_conn :: MVar Connection }
 
@@ -39,8 +41,10 @@ instance Show Key where
       where
         h = B.unpack (B.take 4 hash) <> ".."
 
-mkKey :: ContentHash -> T.Text -> Key
-mkKey hash nm = Key (encodeHash hash) nm
+mkKey :: (Typeable i, Binary i) => i -> T.Text -> Key
+mkKey input nm = Key hash nm
+  where
+    hash = convertToBase Base16 $ C.hashlazy $ encode (nm, show $ typeOf input, input)
 {-# INLINE mkKey #-}
 
 data JobStatus = Pending
@@ -96,16 +100,21 @@ saveItem (DataStore store) (Key k n) res = liftIO $ withMVar store $ \db -> do
 {-# INLINE saveItem #-}
 
 fetchItem :: (MonadIO m, Binary a) => DataStore -> Key -> m a
-fetchItem (DataStore store) (Key k n) = liftIO $ withMVar store $ \db -> do
+fetchItem (DataStore store) (Key k _) = liftIO $ withMVar store $ \db -> do
     query db "SELECT data FROM item_db WHERE hash=?" [k] >>= \case
         [Only result] -> return $ decode result
+        _ -> error "Item not found"
 {-# INLINE fetchItem #-}
+
+delRecord :: MonadIO m => DataStore -> Key -> m ()
+delRecord (DataStore store) (Key k _) = liftIO $ withMVar store $ \db -> do
+    execute db "DELETE FROM meta_db WHERE hash= ?" [k]
+    execute db "DELETE FROM item_db WHERE hash= ?" [k]
+{-# INLINE delRecord #-}
 
 -------------------------------------------------------------------------------
 -- Low level functions
 -------------------------------------------------------------------------------
-
-type Val = B.ByteString
 
 hasTable :: Connection -> String -> IO Bool
 hasTable db tablename = do
@@ -115,37 +124,7 @@ hasTable db tablename = do
 {-# INLINE hasTable #-}
 
 {-
-readData :: Key -> Connection -> IO Val
-readData pid db = do
-    [Only result] <- query db (Query $ T.pack $
-        printf "SELECT data FROM %s WHERE pid=?" dbTableName) [pid]
-    return result
-{-# INLINE readData #-}
-
-updateData :: Key -> Val -> Connection -> IO ()
-updateData pid result db = execute db (Query $ T.pack $
-    printf "UPDATE %s SET data=? WHERE pid=?" dbTableName) (result, pid)
-{-# INLINE updateData #-}
-
-saveData :: Key -> Val -> Connection -> IO ()
-saveData pid result db = execute db (Query $ T.pack $
-    printf "INSERT INTO %s VALUES (?, ?)" dbTableName) (pid, result)
-{-# INLINE saveData #-}
-
-isFinished :: Key -> Connection -> IO Bool
-isFinished pid db = do
-    result <- query db (Query $ T.pack $
-        printf "SELECT pid FROM %s WHERE pid = ?" dbTableName) [pid]
-    return $ not $ null (result :: [Only T.Text])
-{-# INLINE isFinished #-}
-
 getKeys :: Connection -> IO [Key]
 getKeys db = concat <$> query_ db
     (Query $ T.pack $ printf "SELECT pid FROM %s;" dbTableName)
-{-# INLINE getKeys #-}
-
-delRecord :: Key -> Connection -> IO ()
-delRecord pid db = execute db
-    (Query $ T.pack $ printf "DELETE FROM %s WHERE pid = ?" dbTableName) [pid]
-{-# INLINE delRecord #-}
 -}

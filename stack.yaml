@@ -6,7 +6,6 @@ packages:
 extra-deps:
     - drmaa-0.3.0
     - distributed-process-monad-control-0.5.1.3
-    - katip-0.7.0.0
 
     - git:     https://github.com/haskell-distributed/distributed-static.git
       commit:  b7591922edafb0203d8ef4c39a724ff0553327da
@@ -16,10 +15,5 @@ extra-deps:
 
     - git:     https://github.com/haskell-distributed/distributed-process.git
       commit:  660d554f6acd2dba8b605c84e8fa69e45708bc14
-
-    - git:     https://github.com/tweag/funflow.git
-      commit:  78cd6e8b77bcc85208b0343fdcefd04a0533225a
-      subdirs:
-        - funflow
 
 resolver: nightly-2019-05-22

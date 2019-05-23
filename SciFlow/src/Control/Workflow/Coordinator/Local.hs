@@ -14,8 +14,6 @@ import Control.Concurrent.STM
 import Control.Concurrent (threadDelay)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
 import Data.Binary (Binary)
-import Path (parseAbsDir)
-import System.Directory (makeAbsolute)
 import qualified Data.HashMap.Strict as M
 
 import Control.Workflow.Coordinator

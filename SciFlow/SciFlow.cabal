@@ -31,28 +31,34 @@ library
 
   other-modules:
     Paths_SciFlow
+    Control.Arrow.Free
+    Control.Arrow.Async
     Control.Workflow.Language.TH.Internal
 
   build-depends:
       base >= 4.7 && < 5.0
     , bytestring
     , binary
-    , directory
+    , constraints
+    , cryptohash-sha256
     , distributed-process == 0.7.*
     , distributed-process-monad-control
     , exceptions
-    , funflow >= 1.4.1
     , hashable
+    , lifted-async
     , mtl
+    , memory
+    , monad-control
     , network-transport == 0.5.*
     , network-transport-tcp
     , rainbow
     , stm
     , sqlite-simple
-    , path
     , text
     , template-haskell
     , time
+    , transformers
+    , th-lift-instances
     , unordered-containers
 
   hs-source-dirs:      src

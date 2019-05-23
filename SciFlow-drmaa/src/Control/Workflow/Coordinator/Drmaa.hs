@@ -15,7 +15,6 @@ import Network.HostName (getHostName)
 import qualified Data.HashMap.Strict as M
 import qualified DRMAA as D
 import qualified Data.ByteString.Char8                             as B
-import qualified Control.Funflow.ContentStore                as CS
 import Data.Binary (Binary)
 import Control.Distributed.Process
 import Data.List (foldl')
@@ -105,7 +104,6 @@ instance Coordinator Drmaa where
                     return $ Just (map _worker_id x, pool)
 
     shutdown coord = do
-        liftIO $ putStrLn "shutdown all workers"
         liftIO (atomically $ getWorkers coord) >>=
             mapM_ (\worker -> send (_worker_id worker) Shutdown)
         liftIO $ threadDelay 1000000

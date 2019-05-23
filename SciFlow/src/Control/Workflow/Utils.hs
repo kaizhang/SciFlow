@@ -4,12 +4,9 @@ module Control.Workflow.Utils
     ( infoS
     , warnS
     , errorS
-    , showJobName
     ) where
 
 import qualified Data.ByteString.Char8           as B
-import           Control.Funflow.ContentHashable (ContentHash, encodeHash)
-import qualified Data.Text as T
 import           Data.Time                       (defaultTimeLocale, formatTime,
                                                  getZonedTime)
 import           Rainbow
@@ -42,12 +39,6 @@ warnS txt = liftIO $ do
             [prefix, chunk txt & fore red]
     B.hPutStrLn stderr msg
 {-# INLINE warnS #-}
-
-showJobName :: T.Text -> ContentHash -> String
-showJobName jn hash = T.unpack jn <> "(" <> h <> ")"
-  where
-    h = B.unpack (B.take 4 $ encodeHash hash) <> ".."
-{-# INLINE showJobName #-}
 
 getTime :: IO String
 getTime = formatTime defaultTimeLocale "[%m-%d %H:%M]" <$> getZonedTime

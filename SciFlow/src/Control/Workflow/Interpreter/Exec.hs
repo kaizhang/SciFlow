@@ -14,17 +14,14 @@ import           Control.Arrow.Free                          (eval)
 import Control.Monad.Reader
 import Control.Monad.Except (ExceptT, throwError, runExceptT)
 import Control.Monad.Catch (SomeException(..), handleAll)
-import           Control.Funflow.ContentHashable
-import           Control.Monad.IO.Class                      (MonadIO, liftIO)
+import           Control.Monad.IO.Class                      (liftIO)
 import           Control.Monad.Trans (lift)
 import Control.Distributed.Process (kill, processNodeId, call)
 import Control.Distributed.Process.Node (forkProcess, runProcess, newLocalNode, LocalNode)
 import Control.Distributed.Process.MonadBaseControl ()
-import qualified Data.ByteString.Lazy                             as BS
 import qualified Data.HashMap.Strict as M
 import Network.Transport (Transport)
 import Data.Binary (Binary(..), encode, decode)
-import           Path
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar
 
@@ -36,7 +33,7 @@ import Control.Workflow.DataStore
 runSciFlow :: (Coordinator coordinator, Binary env)
            => coordinator       -- ^ Coordinator backend
            -> Transport         -- ^ Cloud Haskell transport
-           -> DataStore   -- ^ Local cache
+           -> DataStore         -- ^ Local cache
            -> ResourceConfig    -- ^ Job resource configuration
            -> env               -- ^ Optional environmental variables
            -> SciFlow env
@@ -49,9 +46,10 @@ runSciFlow coord transport store resource env sciflow = do
             runAsyncA (execFlow nd coord store env sciflow) () 
         shutdown coord
         case res of
-            Left ex -> error $ show ex
-            Right _ -> return ()
+            Left ex -> errorS "Program exit with errors"
+            Right _ -> infoS "Program finish successfully"
         kill pidInit "Exit"
+{-# INLINE runSciFlow #-}
 
 type FlowMonad = ExceptT String (ReaderT ResourceConfig IO)
 
@@ -66,6 +64,7 @@ execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
 execFlow localNode coord store env sciflow = eval (AsyncA . runFlow') $ _flow sciflow
   where
     runFlow' (Step w) = runJob localNode coord store (_function_table sciflow) env w
+{-# INLINE execFlow #-}
 
 runJob :: (Coordinator coordinator, Binary env)
        => LocalNode
@@ -75,9 +74,9 @@ runJob :: (Coordinator coordinator, Binary env)
        -> env
        -> Job env i o
        -> (i -> FlowMonad o)
-runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key) ->
+runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
     AsyncA $ \i -> do
-        let chash = mkKey (key i) _job_name
+        let chash = mkKey i _job_name
             cleanUp (SomeException ex) = do
                 throwError $ show ex
             input | _job_parallel = encode [i]
@@ -102,11 +101,14 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key)
                             liftIO . putMVar result
                         freeWorker coord pid
                     liftIO (takeMVar result) >>= \case
-                        Left msg -> throwError msg
+                        Left msg -> do
+                            errorS $ show chash <> " Failed: " <> msg
+                            throwError msg
                         Right r -> do
                             let res = decode' r
                             saveItem store chash res
                             infoS $ show chash <> ": Complete!"
                             return res
         go
-            ) _job_action
+    ) _job_action
+{-# INLINE runJob #-}

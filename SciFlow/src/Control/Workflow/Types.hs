@@ -18,7 +18,7 @@ import Data.Binary (Binary)
 import Control.Monad.Reader
 import GHC.Generics (Generic)
 import qualified Data.Text as T
-import Control.Funflow.ContentHashable (ContentHash)
+import Data.Typeable (Typeable)
 import Control.Arrow.Free (Free, Choice, effect)
 import qualified Data.ByteString.Lazy as B
 import qualified Data.HashMap.Strict as M
@@ -53,9 +53,8 @@ data Job env i o = Job
     , _job_action :: Choice (Action env) i o }   -- ^ The action to run
 
 data Action env i o where
-    Action :: (Binary i, Binary o) =>
+    Action :: (Typeable i, Typeable o, Binary i, Binary o) =>
         { _unAction :: i -> ReaderT env IO o   -- ^ The function to run
-        , _action_cache :: i -> ContentHash    -- ^ Cache function
         } -> Action env i o
 
 -- | Free arrow side effect.
