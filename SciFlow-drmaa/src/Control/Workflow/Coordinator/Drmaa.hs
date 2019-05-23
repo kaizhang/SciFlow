@@ -36,6 +36,7 @@ import Control.Workflow.Coordinator
 import Control.Workflow
 import Control.Workflow.Interpreter.Exec
 import Control.Workflow.Utils
+import Control.Workflow.DataStore
 
 mainWith :: Binary env
          => SciFlowOpts
@@ -60,8 +61,7 @@ mainWith SciFlowOpts{..} env wf = do
         _ -> do
             Right transport <- createTransport (defaultTCPAddr host (show port))
                 defaultTCPParameters
-            dir <- makeAbsolute _store_path >>= parseAbsDir
-            CS.withStore dir $ \store -> 
+            withStore _store_path $ \store -> 
                 runSciFlow drmaa transport store _resources env wf
 
 data DrmaaConfig = DrmaaConfig

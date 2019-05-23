@@ -18,6 +18,7 @@ import Control.Arrow
 import Control.Distributed.Process.Closure (functionTDict, mkClosure, remotableDecl)
 import Control.Distributed.Process.Node (initRemoteTable)
 import Control.Monad.Reader
+import Control.Monad.Catch (SomeException(..), catch)
 import qualified Control.Category as C
 import Control.Distributed.Process (Process)
 import Control.Concurrent.MVar
@@ -31,30 +32,30 @@ mkFunTable nm wf = remotableDecl [sig, fun, dec]
   where
     funName = mkName $ nm ++ "__dict"
     sig = fmap return $ funName `sigD`
-        [t| (T.Text, B.ByteString, B.ByteString) -> Process (Maybe B.ByteString) |]
+        [t| (T.Text, B.ByteString, B.ByteString) -> Process (Either String B.ByteString) |]
     fun = [d| $(varP funName) = liftIO . mkDict $(varE $ mkName wf) |]
     dec = [d| $(varP $ mkName nm) = FunctionTable $(mkClosure funName) $(functionTDict funName) $ __remoteTableDecl initRemoteTable |]
 
 -- | Function table
 type Dictionary = (T.Text, B.ByteString, B.ByteString)   -- ^ Input
-                -> IO (Maybe B.ByteString)  -- ^ Output
+                -> IO (Either String B.ByteString)  -- ^ Output
 
 mkDict :: Binary env
        => Free (Flow env) i o
        -> Dictionary
 mkDict flow (nm, env, input) = do
-    res <- newMVar Nothing
+    res <- newMVar $ Left ""
     unA $ eval (go res) flow
     readMVar res
   where
     go res (Step job) = A $ modifyMVar_ res $ \case
-        Nothing -> if nm == _job_name job
-            then runJob job
-            else return Nothing
+        Left msg -> if nm == _job_name job
+            then catch (runJob job) $ \(SomeException e) -> return $ Left $ show e
+            else return $ Left msg
         x -> return x
       where
     go _ _ = A $ return ()
-    runJob job = Just . encode <$>
+    runJob job = Right . encode <$>
         runReaderT (f (decode input)) (decode env)
       where
         f = runKleisli $ eval (Kleisli . _unAction) $ _job_action job

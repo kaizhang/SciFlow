@@ -25,6 +25,7 @@ library
     Control.Workflow.Interpreter.Graph
     Control.Workflow.Coordinator
     Control.Workflow.Coordinator.Local
+    Control.Workflow.DataStore
     Control.Workflow.Types
     Control.Workflow.Utils
 
@@ -47,6 +48,7 @@ library
     , network-transport-tcp
     , rainbow
     , stm
+    , sqlite-simple
     , path
     , text
     , template-haskell

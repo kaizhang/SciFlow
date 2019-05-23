@@ -22,4 +22,4 @@ extra-deps:
       subdirs:
         - funflow
 
-resolver: nightly-2019-03-25
+resolver: nightly-2019-05-22

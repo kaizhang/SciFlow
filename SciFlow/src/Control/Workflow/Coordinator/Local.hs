@@ -15,13 +15,13 @@ import Control.Concurrent (threadDelay)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
 import Data.Binary (Binary)
 import Path (parseAbsDir)
-import qualified Control.Funflow.ContentStore                as CS
 import System.Directory (makeAbsolute)
 import qualified Data.HashMap.Strict as M
 
 import Control.Workflow.Coordinator
 import Control.Workflow
 import Control.Workflow.Interpreter.Exec
+import Control.Workflow.DataStore
 
 data LocalConfig = LocalConfig
     { _queue_size :: Int }
@@ -68,7 +68,6 @@ mainWith SciFlowOpts{..} env wf = do
     withCoordinator config $ \coord -> do
         Right transport <- createTransport (defaultTCPAddr host port)
             defaultTCPParameters
-        dir <- makeAbsolute _store_path >>= parseAbsDir
-        CS.withStore dir $ \store -> 
+        withStore _store_path $ \store -> 
             runSciFlow coord transport store (ResourceConfig M.empty) env wf
 

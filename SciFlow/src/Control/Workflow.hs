@@ -21,7 +21,7 @@ data SciFlowOpts = SciFlowOpts
 
 defaultOpts :: SciFlowOpts
 defaultOpts = SciFlowOpts
-    { _store_path = "sciflow_db"
+    { _store_path = "sciflow.db"
     , _master_addr = "192.168.0.1"
     , _master_port = 8888
     , _n_workers = 5

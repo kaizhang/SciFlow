@@ -35,8 +35,8 @@ data SciFlow env = SciFlow
 -- | The function table that can be sent to remote.
 data FunctionTable = FunctionTable
     { _table :: (T.Text, B.ByteString, B.ByteString)
-             -> Closure (Process (Maybe B.ByteString))
-    , _dict :: Static (SerializableDict (Maybe B.ByteString))
+             -> Closure (Process (Either String B.ByteString))
+    , _dict :: Static (SerializableDict (Either String B.ByteString))
     , _rtable :: RemoteTable }
 
 -- | Global job specific resource configuration. This will overwrite any

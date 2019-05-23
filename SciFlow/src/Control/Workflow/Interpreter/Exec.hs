@@ -13,32 +13,30 @@ import           Control.Arrow.Async
 import           Control.Arrow.Free                          (eval)
 import Control.Monad.Reader
 import Control.Monad.Except (ExceptT, throwError, runExceptT)
-import Control.Monad.Catch (SomeException, handleAll, bracket)
+import Control.Monad.Catch (SomeException(..), handleAll)
 import           Control.Funflow.ContentHashable
-import qualified Control.Funflow.ContentStore                as CS
 import           Control.Monad.IO.Class                      (MonadIO, liftIO)
 import           Control.Monad.Trans (lift)
 import Control.Distributed.Process (kill, processNodeId, call)
 import Control.Distributed.Process.Node (forkProcess, runProcess, newLocalNode, LocalNode)
 import Control.Distributed.Process.MonadBaseControl ()
 import qualified Data.ByteString.Lazy                             as BS
-import qualified Data.ByteString.Char8 as B
 import qualified Data.HashMap.Strict as M
-import           System.IO                                   (stdout)
 import Network.Transport (Transport)
 import Data.Binary (Binary(..), encode, decode)
 import           Path
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar
-import qualified Data.Text as T
 
 import Control.Workflow.Types
 import Control.Workflow.Utils
 import Control.Workflow.Coordinator
+import Control.Workflow.DataStore
 
 runSciFlow :: (Coordinator coordinator, Binary env)
            => coordinator       -- ^ Coordinator backend
            -> Transport         -- ^ Cloud Haskell transport
-           -> CS.ContentStore   -- ^ Local cache
+           -> DataStore   -- ^ Local cache
            -> ResourceConfig    -- ^ Job resource configuration
            -> env               -- ^ Optional environmental variables
            -> SciFlow env
@@ -55,13 +53,13 @@ runSciFlow coord transport store resource env sciflow = do
             Right _ -> return ()
         kill pidInit "Exit"
 
-type FlowMonad = ExceptT SomeException (ReaderT ResourceConfig IO)
+type FlowMonad = ExceptT String (ReaderT ResourceConfig IO)
 
 -- | Flow interpreter.
 execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
          => LocalNode
          -> coordinator
-         -> CS.ContentStore
+         -> DataStore
          -> env
          -> SciFlow env
          -> AsyncA FlowMonad () ()
@@ -72,54 +70,43 @@ execFlow localNode coord store env sciflow = eval (AsyncA . runFlow') $ _flow sc
 runJob :: (Coordinator coordinator, Binary env)
        => LocalNode
        -> coordinator
-       -> CS.ContentStore
+       -> DataStore
        -> FunctionTable
        -> env
        -> Job env i o
        -> (i -> FlowMonad o)
 runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _ key) ->
     AsyncA $ \i -> do
-        let chash = key i
-            cleanUp ex = do
-                CS.removeFailed store chash
-                throwError ex
+        let chash = mkKey (key i) _job_name
+            cleanUp (SomeException ex) = do
+                throwError $ show ex
             input | _job_parallel = encode [i]
                   | otherwise = encode i
             decode' x | _job_parallel = let [r] = decode x in r
                       | otherwise = decode x
-        -- A Hack, because `runProcess` cannot return value.
-        result <- liftIO newEmptyMVar
-        -- Block if pending as one node can be executed multiple times
-        CS.constructOrWait store chash >>= \case
-            CS.Complete item -> liftIO $ decode <$> BS.readFile (simpleOutPath item)
-            CS.Missing fp -> handleAll cleanUp $ do
-                infoS $ showJobName _job_name chash <> ": Running ..."
-                jobRes <- lift $ reader (M.lookup _job_name . _resource_config) >>= \case
-                    Nothing -> return _job_resource
-                    r -> return r
-                liftIO $ runProcess localNode $ do
-                    pid <- reserve coord jobRes
-                    call (_dict rf) (processNodeId pid)
-                        ((_table rf) (_job_name, encode env, input)) >>= \case
-                            Just r -> do
-                                freeWorker coord pid
-                                liftIO $ putMVar result r
-                            _ -> error "error"
-                infoS $ showJobName _job_name chash <> ": Complete!"
-                liftIO (takeMVar result) >>= writeStore store chash fp . decode'
-            _ -> undefined
-    ) _job_action
-  where
-    simpleOutPath item = toFilePath $ CS.itemPath store item </> [relfile|out|]
-
---------------------------------------------------------------------------------
--- Store functions
---------------------------------------------------------------------------------
-
-writeStore :: (Binary o, MonadIO m)
-           => CS.ContentStore -> ContentHash -> Path Abs Dir -> o -> m o
-writeStore store chash fp res = do
-    liftIO $ BS.writeFile (toFilePath $ fp </> [relfile|out|]) $ encode res
-    _ <- CS.markComplete store chash
-    return res
-{-# INLINE writeStore #-}
+            go = queryStatus store chash >>= \case
+                Just Pending -> liftIO (threadDelay 1000) >> go
+                Just (Failed msg) -> throwError msg
+                Just Complete -> fetchItem store chash
+                Nothing -> handleAll cleanUp $ do
+                    -- A Hack, because `runProcess` cannot return value.
+                    result <- liftIO newEmptyMVar
+                    infoS $ show chash <> ": Running ..."
+                    jobRes <- lift $ reader (M.lookup _job_name . _resource_config) >>= \case
+                        Nothing -> return _job_resource
+                        r -> return r
+                    liftIO $ runProcess localNode $ do
+                        pid <- reserve coord jobRes
+                        call (_dict rf) (processNodeId pid)
+                            ((_table rf) (_job_name, encode env, input)) >>=
+                            liftIO . putMVar result
+                        freeWorker coord pid
+                    liftIO (takeMVar result) >>= \case
+                        Left msg -> throwError msg
+                        Right r -> do
+                            let res = decode' r
+                            saveItem store chash res
+                            infoS $ show chash <> ": Complete!"
+                            return res
+        go
+            ) _job_action
