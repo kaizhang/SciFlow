@@ -19,7 +19,7 @@ import Control.Workflow.Main.Types
 
 data Run a where
     Run :: Coordinator coord =>
-        { decodeConfig :: (FilePath -> IO (Config coord))
+        { decodeConfig :: (String -> Int -> FilePath -> IO (Config coord))
         , dbPath :: FilePath
         , configFile :: FilePath
         , serverAddr :: Maybe String
@@ -38,7 +38,7 @@ instance Command (Run config) where
                         runSciFlow coord transport store (ResourceConfig M.empty) env wf
         Just ip -> do
             env <- decodeFileThrow configFile
-            config <- decodeConfig configFile
+            config <- decodeConfig ip serverPort configFile
             withCoordinator config $ \coord -> do
                 Right transport <- createTransport (defaultTCPAddr ip (show serverPort))
                     defaultTCPParameters
@@ -46,7 +46,7 @@ instance Command (Run config) where
                     runSciFlow coord transport store (ResourceConfig M.empty) env wf
 
 run :: Coordinator coord
-    => (FilePath -> IO (Config coord))  -- ^ config reader
+    => (String -> Int -> FilePath -> IO (Config coord))  -- ^ config reader
     -> Parser Options
 run f1 = fmap Options $ Run <$> pure f1
     <*> strOption
