@@ -2,18 +2,29 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Control.Workflow.Visualize
-    ( renderCytoscape
-    , jsonCytoscape
-    ) where
+module Control.Workflow.Main.Command.View (view) where
 
 import Data.Aeson.QQ (aesonQQ)
 import Data.Aeson (Value, encode)
 import Text.RawString.QQ (r)
 import qualified Data.ByteString.Lazy.Char8 as B
+import Control.Workflow.Interpreter.Graph
+import           Options.Applicative
 import Text.Printf (printf)
 
-import Control.Workflow.Interpreter.Graph
+import Control.Workflow.Main.Types
+
+data View = View
+
+instance Command View where
+    runCommand _ = putStrLn . renderCytoscape . mkGraph
+
+view :: Parser Options
+view = pure $ Options View
+
+-------------------------------------------------------------------------------
+-- Graph
+-------------------------------------------------------------------------------
 
 -- | Create Dagre representation.
 jsonCytoscape :: Graph -> Value

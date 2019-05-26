@@ -1,7 +1,7 @@
 packages:
     - 'SciFlow'
     - 'SciFlow-drmaa'
-    - 'SciFlow-viz'
+    - 'SciFlow-app'
 
 extra-deps:
     - drmaa-0.3.0

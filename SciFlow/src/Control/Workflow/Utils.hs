@@ -4,15 +4,19 @@ module Control.Workflow.Utils
     ( infoS
     , warnS
     , errorS
+    , mkNodeId
     ) where
 
 import qualified Data.ByteString.Char8           as B
+import Network.Transport (EndPointAddress(..))
+import Control.Distributed.Process (NodeId(..))
 import           Data.Time                       (defaultTimeLocale, formatTime,
                                                  getZonedTime)
 import           Rainbow
 import           System.IO
 import           Control.Monad.IO.Class                      (MonadIO, liftIO)
     
+-- | Pretty print info messages.
 infoS :: MonadIO m => String -> m ()
 infoS txt = liftIO $ do
     t <- getTime
@@ -22,6 +26,7 @@ infoS txt = liftIO $ do
     B.hPutStrLn stderr msg
 {-# INLINE infoS #-}
     
+-- | Pretty print error messages.
 errorS :: MonadIO m => String -> m ()
 errorS txt = liftIO $ do
     t <- getTime
@@ -31,6 +36,7 @@ errorS txt = liftIO $ do
     B.hPutStrLn stderr msg
 {-# INLINE errorS #-}
     
+-- | Pretty print warning messages.
 warnS :: MonadIO m => String -> m ()
 warnS txt = liftIO $ do
     t <- getTime
@@ -40,6 +46,15 @@ warnS txt = liftIO $ do
     B.hPutStrLn stderr msg
 {-# INLINE warnS #-}
 
+-- | Get current time.
 getTime :: IO String
 getTime = formatTime defaultTimeLocale "[%m-%d %H:%M]" <$> getZonedTime
 {-# INLINE getTime #-}
+
+-- | Construct node id given server address and port.
+mkNodeId :: B.ByteString   -- ^ Server address
+         -> Int            -- ^ Server port
+         -> NodeId
+mkNodeId ip port = NodeId $ EndPointAddress $ B.intercalate ":" $
+    [ip, B.pack $ show $ port, "0"]
+{-# INLINE mkNodeId #-}

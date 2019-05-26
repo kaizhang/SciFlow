@@ -1,5 +1,5 @@
 cabal-version: 1.12
-name:           SciFlow-viz
+name:           SciFlow-app
 version:        0.1.0
 description:    Please see the README on GitHub at <https://github.com/githubuser/SciFlow-viz#readme>
 homepage:       https://github.com/githubuser/SciFlow-viz#readme
@@ -20,13 +20,24 @@ source-repository head
 
 library
   exposed-modules:
-      Control.Workflow.Visualize
+      Control.Workflow.Main
+      Control.Workflow.Main.Command
+      Control.Workflow.Main.Command.Run
+      Control.Workflow.Main.Command.View
+      Control.Workflow.Main.Types
   hs-source-dirs: src
   build-depends:
       base >=4.7 && <5
     , aeson
     , aeson-qq
+    , binary
     , bytestring
     , raw-strings-qq
     , SciFlow
+    , optparse-applicative
+    , unordered-containers
+    , text
+    , split
+    , yaml
+    , network-transport-tcp
   default-language: Haskell2010
