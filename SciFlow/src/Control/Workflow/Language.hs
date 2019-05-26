@@ -47,18 +47,22 @@ data NodeAttributes = NodeAttributes
     , _memory :: Int
     , _queue :: Maybe String }
 
+-- | Node description.
 doc :: Functor f => (T.Text -> f T.Text) -> NodeAttributes -> f NodeAttributes
 doc x y = fmap (\newX -> y { _doc = newX }) (x (_doc y))
 {-# INLINE doc #-}
 
+-- | Number of cores.
 nCore :: Functor f => (Int -> f Int) -> NodeAttributes -> f NodeAttributes
 nCore x y = fmap (\newX -> y { _nCore = newX }) (x (_nCore y))
 {-# INLINE nCore #-}
 
+-- | Total memory.
 memory :: Functor f => (Int -> f Int) -> NodeAttributes -> f NodeAttributes
 memory x y = fmap (\newX -> y { _memory = newX }) (x (_memory y))
 {-# INLINE memory #-}
 
+-- | Job queue.
 queue :: Functor f
       => (Maybe String -> f (Maybe String))
       -> NodeAttributes -> f NodeAttributes
@@ -97,8 +101,8 @@ type Builder = State Workflow
 node :: THExp q
      => T.Text   -- ^ Node id
      -> q        -- ^ Template Haskell expression representing
-                 -- functions with type @a -> IO b@.
-     -> State NodeAttributes ()
+                 -- functions with type @a -> ReaderT env IO b@.
+     -> State NodeAttributes ()   -- ^ Option setter
      -> Builder ()
 node i f attrSetter = modify $ \wf ->
     wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
@@ -106,11 +110,12 @@ node i f attrSetter = modify $ \wf ->
     nd = mkNode f attrSetter
 {-# INLINE node #-}
 
--- | Define a step that will be executed in parallel.
+-- | Define a step that will be executed in parallel, i.e.,
+-- @a -> m b@ becomes @[a] -> m [b]@.
 nodePar :: THExp q
         => T.Text   -- ^ Node id
         -> q        -- ^ Template Haskell expression representing
-                    -- functions with type @a -> IO b@.
+                    -- functions with type @a -> ReaderT env IO b@.
         -> State NodeAttributes ()
         -> Builder ()
 nodePar i f attrSetter = modify $ \wf ->
@@ -124,18 +129,18 @@ linkFromTo ps to = modify $ \wf ->
     wf{ _parents = M.insertWith undefined to ps $ _parents wf }
 {-# INLINE linkFromTo #-}
 
--- | Declare the dependency between nodes.
+-- | Connect nodes.
 -- Example:
 --
--- > node "step1" [| \() -> 1 :: Int |] $ return ()
--- > node "step2" [| \() -> 2 :: Int |] $ return ()
+-- > node "step1" [| \() -> return 1 |] $ return ()
+-- > node "step2" [| \() -> return 2 |] $ return ()
 -- > node "step3" [| \(x, y) -> x * y |] $ return ()
 -- > ["step1", "step2"] ~> "step3"
 (~>) :: [T.Text] -> T.Text -> Builder ()
 (~>) = linkFromTo
 {-# INLINE (~>) #-}
 
--- | "@'path' [a, b, c]@" is equivalent to "@'[a] ~> b >> [b] ~> c@"
+-- | @'path' [a, b, c]@ is equivalent to @[a] ~> b >> [b] ~> c@
 path :: [T.Text] -> Builder ()
 path ns = sequence_ $ zipWith linkFromTo (map return $ init ns) $ tail ns
 {-# INLINE path #-}

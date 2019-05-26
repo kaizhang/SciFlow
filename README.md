@@ -2,7 +2,7 @@ Scientific workflow management system
 =====================================
 
 SciFlow is a DSL for building type-safe computational workflows.
-SciFlow is implemented based on the Free Monad and is heavily inspired by the funflow package.
+SciFlow is implemented based on the Free Arrow and is heavily inspired by the funflow package.
 The differences between SciFlow and funflow are:
 
 1. SciFlow uses Template Haskell to ease the process of workflow specification and to allow composition and reuse of defined workflows.

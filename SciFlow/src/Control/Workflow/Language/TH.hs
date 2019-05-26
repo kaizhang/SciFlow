@@ -19,10 +19,10 @@ import Control.Workflow.Types
 import Control.Workflow.Interpreter.FunctionTable (mkFunTable)
 import Control.Workflow.Language.TH.Internal
 
--- | Generate template haskell codes to define the workflow.
-build :: String   -- ^ The name of the compiled workflow
-      -> TypeQ    -- ^ The function signature
-      -> Builder ()
+-- | Generate template haskell codes to build the workflow.
+build :: String   -- ^ The name of the compiled workflow.
+      -> TypeQ    -- ^ The workflow signature.
+      -> Builder ()  -- ^ Worflow builder.
       -> Q [Dec]
 build name sig builder = compile name sig wf
   where

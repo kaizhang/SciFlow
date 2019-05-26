@@ -5,21 +5,14 @@
 module Control.Workflow.Coordinator.Local
     ( LocalConfig(..)
     , Local
-    , mainWith
     ) where
 
 import           Control.Monad.IO.Class                      (liftIO)
 import Control.Distributed.Process
 import Control.Concurrent.STM
 import Control.Concurrent (threadDelay)
-import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
-import Data.Binary (Binary)
-import qualified Data.HashMap.Strict as M
 
 import Control.Workflow.Coordinator
-import Control.Workflow
-import Control.Workflow.Interpreter.Exec
-import Control.Workflow.DataStore
 
 data LocalConfig = LocalConfig
     { _queue_size :: Int }
@@ -53,19 +46,3 @@ instance Coordinator Local where
     freeWorker (Local counter _) _ = liftIO $ atomically $ do
         n <- takeTMVar counter
         putTMVar counter $ n - 1
-
-mainWith :: Binary env
-         => SciFlowOpts
-         -> env
-         -> SciFlow env
-         -> IO ()
-mainWith SciFlowOpts{..} env wf = do
-    let host = _master_addr
-        port = show _master_port
-        config = LocalConfig { _queue_size = _n_workers }
-    withCoordinator config $ \coord -> do
-        Right transport <- createTransport (defaultTCPAddr host port)
-            defaultTCPParameters
-        withStore _store_path $ \store -> 
-            runSciFlow coord transport store (ResourceConfig M.empty) env wf
-

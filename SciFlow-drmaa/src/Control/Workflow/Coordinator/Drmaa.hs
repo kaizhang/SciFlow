@@ -7,7 +7,6 @@ module Control.Workflow.Coordinator.Drmaa
     ( Drmaa
     , DrmaaConfig(..)
     , getDefaultDrmaaConfig
-    , mainWith
     ) where
 
 import           Control.Monad.IO.Class                      (liftIO)
@@ -15,52 +14,22 @@ import Control.Monad (replicateM)
 import Network.HostName (getHostName)
 import qualified Data.HashMap.Strict as M
 import qualified DRMAA as D
-import qualified Data.ByteString.Char8                             as B
-import Data.Binary (Binary)
 import Control.Distributed.Process
 import Data.List (foldl')
 import Control.Concurrent.STM
 import Control.Concurrent (threadDelay)
 import Control.Monad (forever)
-import System.Environment (getArgs, getExecutablePath, getEnv)
+import System.Environment (getExecutablePath, getEnv)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
 import Control.Distributed.Process.Node
-import Network.Transport (EndPointAddress(..))
 import Text.Printf (printf)
 import Data.Maybe (fromMaybe)
 import System.Random (randomRIO)
-import Data.Proxy (Proxy(..))
 
 import Control.Workflow.Coordinator
 import Control.Workflow
-import Control.Workflow.Interpreter.Exec
 import Control.Workflow.Utils
-import Control.Workflow.DataStore
-
-mainWith :: Binary env
-         => SciFlowOpts
-         -> env
-         -> SciFlow env
-         -> IO ()
-mainWith SciFlowOpts{..} env wf = do
-    exePath <- getExecutablePath
-    let host = _master_addr
-        port = _master_port
-        config = DrmaaConfig
-            { _queue_size = _n_workers
-            , _cmd = (exePath, ["--slave"])
-            , _cpu_format = "--ntasks-per-node=%d" 
-            , _memory_format = "--mem=%d000"
-            , _queue_format = "-p %s"
-            , _drmaa_parameters = Nothing }
-    getArgs >>= \case
-        ["--slave"] -> startClient (Proxy :: Proxy Drmaa)
-            (mkNodeId host port) $ _function_table wf
-        _ -> withCoordinator config $ \drmaa -> do
-            Right transport <- createTransport (defaultTCPAddr host (show port))
-                defaultTCPParameters
-            withStore _store_path $ \store -> 
-                runSciFlow drmaa transport store _resources env wf
+import Control.Workflow.Types
 
 data DrmaaConfig = DrmaaConfig
     { _queue_size :: Int
@@ -71,12 +40,14 @@ data DrmaaConfig = DrmaaConfig
     , _drmaa_parameters :: Maybe String -- ^ additional drmaa parameters
     }
 
-getDefaultDrmaaConfig :: IO DrmaaConfig
-getDefaultDrmaaConfig = do
+getDefaultDrmaaConfig :: [String]  -- ^ Parameters of the executable
+                                   -- that runs on the workers
+                      -> IO DrmaaConfig
+getDefaultDrmaaConfig params = do
     exePath <- getExecutablePath
     return $ DrmaaConfig
         { _queue_size = 100
-        , _cmd = (exePath, [])
+        , _cmd = (exePath, params)
         , _cpu_format = "--ntasks-per-node=%d" 
         , _memory_format = "--mem=%d000"
         , _queue_format = "-p %s"
