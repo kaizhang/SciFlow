@@ -36,7 +36,7 @@ instance Coordinator Local where
 
     initiate _ = return ()
     shutdown _ = return ()
-    startClient _ _ = return ()
+    startClient _ _ _ = return ()
     getWorkers _ = return []
 
     reserve (Local counter config) _ = liftIO tryReserve >> getSelfPid

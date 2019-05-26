@@ -19,10 +19,9 @@ import Control.Workflow.Main.Types
 
 data Run a where
     Run :: Coordinator coord =>
-        { decodeConfig :: (String -> Int -> T.Text -> Config coord)
+        { decodeConfig :: (FilePath -> IO (Config coord))
         , dbPath :: FilePath
         , configFile :: FilePath
-        , isWorker :: Bool
         , serverAddr :: Maybe String
         , serverPort :: Int
         } -> Run (Config coord)
@@ -39,17 +38,15 @@ instance Command (Run config) where
                         runSciFlow coord transport store (ResourceConfig M.empty) env wf
         Just ip -> do
             env <- decodeFileThrow configFile
-            config <- decodeConfig ip serverPort <$> T.readFile configFile
-            withCoordinator config $ \coord -> if isWorker
-                then startClient coord $ _function_table wf
-                else do
-                    Right transport <- createTransport (defaultTCPAddr (fromJust serverAddr) (show serverPort))
-                        defaultTCPParameters
-                    withStore dbPath $ \store -> 
-                        runSciFlow coord transport store (ResourceConfig M.empty) env wf
+            config <- decodeConfig configFile
+            withCoordinator config $ \coord -> do
+                Right transport <- createTransport (defaultTCPAddr ip (show serverPort))
+                    defaultTCPParameters
+                withStore dbPath $ \store -> 
+                    runSciFlow coord transport store (ResourceConfig M.empty) env wf
 
 run :: Coordinator coord
-    => (String -> Int -> T.Text -> Config coord)  -- ^ reader
+    => (FilePath -> IO (Config coord))  -- ^ config reader
     -> Parser Options
 run f1 = fmap Options $ Run <$> pure f1
     <*> strOption
@@ -59,14 +56,11 @@ run f1 = fmap Options $ Run <$> pure f1
     <*> strOption
         ( long "config"
        <> metavar "CONFIG_PATH" )
-    <*> switch
-        ( long "worker"
-       <> help "Submit jobs to remote machines.")
     <*> (optional . strOption)
         ( long "ip"
-       <> metavar "CONFIG_PATH" )
+       <> metavar "SERVER_ADDR" )
     <*> option auto
         ( long "port"
        <> short 'p'
        <> value 8888
-       <> metavar "CONFIG_PATH" )
+       <> metavar "SERVER_PORT" )

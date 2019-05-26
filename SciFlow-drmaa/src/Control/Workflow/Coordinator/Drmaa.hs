@@ -6,6 +6,7 @@
 module Control.Workflow.Coordinator.Drmaa
     ( Drmaa
     , DrmaaConfig(..)
+    , getDefaultDrmaaConfig
     , mainWith
     ) where
 
@@ -28,6 +29,7 @@ import Network.Transport (EndPointAddress(..))
 import Text.Printf (printf)
 import Data.Maybe (fromMaybe)
 import System.Random (randomRIO)
+import Data.Proxy (Proxy(..))
 
 import Control.Workflow.Coordinator
 import Control.Workflow
@@ -47,15 +49,14 @@ mainWith SciFlowOpts{..} env wf = do
         config = DrmaaConfig
             { _queue_size = _n_workers
             , _cmd = (exePath, ["--slave"])
-            , _address = host
-            , _port = port
             , _cpu_format = "--ntasks-per-node=%d" 
             , _memory_format = "--mem=%d000"
             , _queue_format = "-p %s"
             , _drmaa_parameters = Nothing }
-    withCoordinator config $ \drmaa -> getArgs >>= \case
-        ["--slave"] -> startClient drmaa $ _function_table wf
-        _ -> do
+    getArgs >>= \case
+        ["--slave"] -> startClient (Proxy :: Proxy Drmaa)
+            (mkNodeId host port) $ _function_table wf
+        _ -> withCoordinator config $ \drmaa -> do
             Right transport <- createTransport (defaultTCPAddr host (show port))
                 defaultTCPParameters
             withStore _store_path $ \store -> 
@@ -63,14 +64,23 @@ mainWith SciFlowOpts{..} env wf = do
 
 data DrmaaConfig = DrmaaConfig
     { _queue_size :: Int
-    , _cmd :: (FilePath, [String])
-    , _address :: String
-    , _port :: Int
+    , _cmd :: (FilePath, [String])  -- ^ Command to start the worker process
     , _cpu_format :: String   -- ^ How to specify cpu number, default: "--ntasks-per-node=%d"
     , _memory_format :: String   -- ^ How to specify memory, default: "--mem=%dG"
     , _queue_format :: String
     , _drmaa_parameters :: Maybe String -- ^ additional drmaa parameters
     }
+
+getDefaultDrmaaConfig :: IO DrmaaConfig
+getDefaultDrmaaConfig = do
+    exePath <- getExecutablePath
+    return $ DrmaaConfig
+        { _queue_size = 100
+        , _cmd = (exePath, [])
+        , _cpu_format = "--ntasks-per-node=%d" 
+        , _memory_format = "--mem=%d000"
+        , _queue_format = "-p %s"
+        , _drmaa_parameters = Nothing }
 
 data Drmaa = Drmaa
     { _worker_pool :: TMVar WorkerPool
@@ -106,13 +116,11 @@ instance Coordinator Drmaa where
             mapM_ (\worker -> send (_worker_id worker) Shutdown)
         liftIO $ threadDelay 1000000
 
-    startClient Drmaa{..} rf = do
+    startClient _ serverAddr rf = do
         host <- getHostName
         transport <- tryCreateTransport host ([8000..8200] :: [Int])
         nd <- newLocalNode transport $ _rtable rf
         runProcess nd $ do
-            let serverAddr = NodeId $ EndPointAddress $ B.intercalate ":" $
-                    [B.pack $ _address _config, B.pack $ show $ _port _config, "0"]
             -- Link to the main process
             linkNode serverAddr
             serverPid <- liftIO (getEnv "master_id") >>= searchServer serverAddr

@@ -2,6 +2,7 @@ module Control.Workflow.Main.Command
     ( mkArgsParser
     , run
     , view
+    , remote
     ) where
 
 import           Options.Applicative
@@ -9,6 +10,7 @@ import           Options.Applicative
 import Control.Workflow.Main.Types
 import Control.Workflow.Main.Command.Run
 import Control.Workflow.Main.Command.View
+import Control.Workflow.Main.Command.Remote
 
 mkArgsParser :: String   -- ^ Header
              -> [(String, Parser a)] -> ParserInfo a

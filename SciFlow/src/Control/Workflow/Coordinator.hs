@@ -32,6 +32,7 @@ import GHC.Generics (Generic)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Distributed.Process
 import GHC.Conc (STM)
+import Data.Proxy (Proxy(..))
 
 import Control.Workflow.Types
 
@@ -49,7 +50,7 @@ class Coordinator coordinator where
     -- | Server shutdown process
     shutdown :: coordinator -> Process ()
 
-    startClient :: coordinator -> FunctionTable -> IO ()
+    startClient :: Proxy coordinator -> NodeId -> FunctionTable -> IO ()
 
     -- | Get all workers.
     getWorkers :: coordinator -> STM [Worker]

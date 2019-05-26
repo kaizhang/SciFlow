@@ -52,9 +52,9 @@ getTime = formatTime defaultTimeLocale "[%m-%d %H:%M]" <$> getZonedTime
 {-# INLINE getTime #-}
 
 -- | Construct node id given server address and port.
-mkNodeId :: B.ByteString   -- ^ Server address
-         -> Int            -- ^ Server port
+mkNodeId :: String    -- ^ Server address
+         -> Int       -- ^ Server port
          -> NodeId
 mkNodeId ip port = NodeId $ EndPointAddress $ B.intercalate ":" $
-    [ip, B.pack $ show $ port, "0"]
+    [B.pack ip, B.pack $ show $ port, "0"]
 {-# INLINE mkNodeId #-}

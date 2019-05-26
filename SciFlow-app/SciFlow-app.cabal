@@ -24,6 +24,7 @@ library
       Control.Workflow.Main.Command
       Control.Workflow.Main.Command.Run
       Control.Workflow.Main.Command.View
+      Control.Workflow.Main.Command.Remote
       Control.Workflow.Main.Types
   hs-source-dirs: src
   build-depends:
