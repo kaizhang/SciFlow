@@ -20,51 +20,76 @@ import Control.Distributed.Process (kill, processNodeId, call)
 import Control.Distributed.Process.Node (forkProcess, runProcess, newLocalNode, LocalNode)
 import Control.Distributed.Process.MonadBaseControl ()
 import qualified Data.HashMap.Strict as M
+import qualified Data.HashSet as S
 import Network.Transport (Transport)
 import Data.Binary (Binary(..), encode, decode)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar
+import qualified Data.Text as T
 
 import Control.Workflow.Types
 import Control.Workflow.Utils
 import Control.Workflow.Coordinator
 import Control.Workflow.DataStore
+import Control.Workflow.Interpreter.Graph
 
 runSciFlow :: (Coordinator coordinator, Binary env)
            => coordinator       -- ^ Coordinator backend
            -> Transport         -- ^ Cloud Haskell transport
            -> DataStore         -- ^ Local cache
            -> ResourceConfig    -- ^ Job resource configuration
-           -> env               -- ^ Optional environmental variables
+           -> Maybe [T.Text]    -- ^ A list of job names. If provided, only
+                                -- these nodes and their dependencies will
+                                -- be executed.
+           -> env               -- ^ Environmental variables
            -> SciFlow env
            -> IO ()
-runSciFlow coord transport store resource env sciflow = do
+runSciFlow coord transport store resource selection env sciflow = do
     nd <- newLocalNode transport $ _rtable $ _function_table sciflow
     pidInit <- forkProcess nd $ initiate coord
     runProcess nd $ do
-        res <- liftIO $ flip runReaderT resource $ runExceptT $
-            runAsyncA (execFlow nd coord store env sciflow) () 
-        shutdown coord
+        let fun = execFlow nd coord store
+                (fmap (getDependencies (mkGraph sciflow)) selection)
+                env sciflow
+        res <- liftIO $ runReaderT (runExceptT $ runAsyncA fun ()) resource
         case res of
-            Left ex -> errorS "Program exit with errors"
-            Right _ -> infoS "Program finish successfully"
+            Left Errored -> errorS "Program exits with errors"
+            Left EarlyStopped -> infoS "Parts of the program finish successfully"
+            Right _ -> infoS "Program finishes successfully"
+        shutdown coord
         kill pidInit "Exit"
 {-# INLINE runSciFlow #-}
 
-type FlowMonad = ExceptT String (ReaderT ResourceConfig IO)
+data RunStatus = EarlyStopped | Errored
+
+type FlowMonad = ExceptT RunStatus (ReaderT ResourceConfig IO)
 
 -- | Flow interpreter.
 execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
          => LocalNode
          -> coordinator
          -> DataStore
+         -> Maybe (S.HashSet T.Text)
          -> env
          -> SciFlow env
          -> AsyncA FlowMonad () ()
-execFlow localNode coord store env sciflow = eval (AsyncA . runFlow') $ _flow sciflow
+execFlow localNode coord store selection env sciflow = eval (AsyncA . runFlow') $ _flow sciflow
   where
-    runFlow' (Step w) = runJob localNode coord store (_function_table sciflow) env w
+    runFlow' (Step job) = case selection of
+        Nothing -> run
+        Just s -> if _job_name job `S.member` s
+            then run
+            else const $ throwError EarlyStopped
+      where
+        run = runJob localNode coord store (_function_table sciflow) env job
 {-# INLINE execFlow #-}
+
+getDependencies :: Graph -> [T.Text] -> S.HashSet T.Text
+getDependencies gr ids = S.fromList $ flip concatMap ids $
+    \i -> M.lookupDefault [] i gr'
+  where
+    gr' = M.fromListWith (++) $ map (\e -> (_to e, [_from e])) $ _edges gr
+{-# INLINE getDependencies #-}
 
 runJob :: (Coordinator coordinator, Binary env)
        => LocalNode
@@ -77,15 +102,14 @@ runJob :: (Coordinator coordinator, Binary env)
 runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
     AsyncA $ \i -> do
         let chash = mkKey i _job_name
-            cleanUp (SomeException ex) = do
-                throwError $ show ex
+            cleanUp (SomeException _) = throwError Errored
             input | _job_parallel = encode [i]
                   | otherwise = encode i
             decode' x | _job_parallel = let [r] = decode x in r
                       | otherwise = decode x
             go = queryStatus store chash >>= \case
                 Just Pending -> liftIO (threadDelay 1000) >> go
-                Just (Failed msg) -> throwError msg
+                Just (Failed _) -> throwError Errored
                 Just Complete -> fetchItem store chash
                 Nothing -> handleAll cleanUp $ do
                     -- A Hack, because `runProcess` cannot return value.
@@ -103,7 +127,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
                     liftIO (takeMVar result) >>= \case
                         Left msg -> do
                             errorS $ show chash <> " Failed: " <> msg
-                            throwError msg
+                            throwError Errored
                         Right r -> do
                             let res = decode' r
                             saveItem store chash res

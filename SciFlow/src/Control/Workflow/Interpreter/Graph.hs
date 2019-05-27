@@ -19,13 +19,6 @@ import Data.Hashable (Hashable(..))
 
 import Control.Workflow.Types
 
-mkGraph :: SciFlow env -> Graph
-mkGraph flow = Graph ns $ map (\(a,b) -> Edge (_id a) $ _id b) es
-  where
-    ns = S.toList $ S.fromList $ concatMap (\(a,b) -> [a,b]) es
-    es = S.toList $ S.fromList $ toEdges $ toDiagram $ _flow flow
-{-# INLINE mkGraph #-}
-
 data Graph = Graph
     { _nodes :: [Node]
     , _edges :: [Edge] }
@@ -44,6 +37,13 @@ instance Eq Node where
 data Edge = Edge
     { _from :: T.Text
     , _to :: T.Text }
+
+mkGraph :: SciFlow env -> Graph
+mkGraph flow = Graph ns $ map (\(a,b) -> Edge (_id a) $ _id b) es
+  where
+    ns = S.toList $ S.fromList $ concatMap (\(a,b) -> [a,b]) es
+    es = S.toList $ S.fromList $ toEdges $ toDiagram $ _flow flow
+{-# INLINE mkGraph #-}
 
 toEdges :: Diagram a b -> [(Node, Node)]
 toEdges (Seq f g) = map (\[a,b] -> (a,b)) (sequence [lastD f, headD g]) ++

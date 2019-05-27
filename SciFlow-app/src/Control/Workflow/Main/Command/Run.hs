@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GADTs #-}
 module Control.Workflow.Main.Command.Run (run) where
 
@@ -24,6 +25,7 @@ data Run a where
         , configFile :: FilePath
         , serverAddr :: Maybe String
         , serverPort :: Int
+        , selection :: Maybe [T.Text]
         } -> Run (Config coord)
 
 instance Command (Run config) where
@@ -35,7 +37,7 @@ instance Command (Run config) where
                     Right transport <- createTransport (defaultTCPAddr "localhost" (show serverPort))
                         defaultTCPParameters
                     withStore dbPath $ \store -> 
-                        runSciFlow coord transport store (ResourceConfig M.empty) env wf
+                        runSciFlow coord transport store (ResourceConfig M.empty) selection env wf
         Just ip -> do
             env <- decodeFileThrow configFile
             config <- decodeConfig ip serverPort configFile
@@ -43,7 +45,7 @@ instance Command (Run config) where
                 Right transport <- createTransport (defaultTCPAddr ip (show serverPort))
                     defaultTCPParameters
                 withStore dbPath $ \store -> 
-                    runSciFlow coord transport store (ResourceConfig M.empty) env wf
+                    runSciFlow coord transport store (ResourceConfig M.empty) selection env wf
 
 run :: Coordinator coord
     => (String -> Int -> FilePath -> IO (Config coord))  -- ^ config reader
@@ -63,4 +65,8 @@ run f1 = fmap Options $ Run <$> pure f1
         ( long "port"
        <> short 'p'
        <> value 8888
-       <> metavar "SERVER_PORT" )
+       <> metavar "8888" )
+    <*> (optional . option (T.splitOn "," . T.pack <$> str))
+        ( long "select"
+       <> metavar "NODE1,NODE2"
+       <> help "Run only selected nodes.")

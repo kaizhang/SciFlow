@@ -56,7 +56,7 @@ main = do
             Right transport <- createTransport (defaultTCPAddr serverAddr $ show port)
                 defaultTCPParameters
             withStore storePath $ \store -> 
-                runSciFlow coord transport store (ResourceConfig M.empty) 2 wf
+                runSciFlow coord transport store (ResourceConfig M.empty) Nothing 2 wf
         -- Using the DRMAA backend
         "drmaa" -> do
             config <- getDefaultDrmaaConfig ["slave"]
@@ -64,7 +64,7 @@ main = do
                 Right transport <- createTransport (defaultTCPAddr serverAddr $ show port)
                     defaultTCPParameters
                 withStore storePath $ \store -> 
-                    runSciFlow coord transport store resources 2 wf
+                    runSciFlow coord transport store resources Nothing 2 wf
         -- DRMAA workers
         "slave" -> startClient (Proxy :: Proxy Drmaa)
             (mkNodeId serverAddr port) $ _function_table wf
