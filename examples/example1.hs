@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 import Control.Monad.Reader
 import Control.Concurrent (threadDelay)
@@ -45,18 +46,18 @@ build "wf" [t| SciFlow Int |] $ do
 main :: IO ()
 main = do
     let serverAddr = "192.168.0.1"
-        port = 8888
+        port = 23488
         storePath = "sciflow.db"
         resources = ResourceConfig $ M.fromList
             [("S6", Resource (Just 2) Nothing Nothing)]
     [mode] <- getArgs
     case mode of
         -- Run on local machine
-        "local" -> withCoordinator (LocalConfig 5) $ \coord -> do
-            Right transport <- createTransport (defaultTCPAddr serverAddr $ show port)
-                defaultTCPParameters
-            withStore storePath $ \store -> 
-                runSciFlow coord transport store (ResourceConfig M.empty) Nothing 2 wf
+        "local" -> withCoordinator (LocalConfig 5) $ \coord ->
+                createTransport (defaultTCPAddr "localhost" $ show port) defaultTCPParameters >>= \case
+                    Left ex -> print ex
+                    Right transport -> withStore storePath $ \store -> 
+                        runSciFlow coord transport store (ResourceConfig M.empty) Nothing 2 wf
         -- Using the DRMAA backend
         "drmaa" -> do
             config <- getDefaultDrmaaConfig ["slave"]

@@ -101,7 +101,9 @@ runJob :: (Coordinator coordinator, Binary env)
 runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
     AsyncA $ \i -> do
         let chash = mkKey i _job_name
-            cleanUp (SomeException _) = throwError Errored
+            cleanUp (SomeException ex) = do
+                markFailed store chash $ show ex
+                throwError Errored
             input | _job_parallel = encode [i]
                   | otherwise = encode i
             decode' x | _job_parallel = let [r] = decode x in r

@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE GADTs #-}
 module Control.Workflow.Main.Command.Run (run) where
 
@@ -16,6 +17,7 @@ import Control.Workflow.Main.Types
 import Control.Workflow.Coordinator
 import Control.Workflow.Coordinator.Local (LocalConfig(..))
 import Control.Workflow.Types
+import Control.Workflow.Utils (errorS)
 import Control.Workflow.DataStore
 
 data Run a where
@@ -33,19 +35,21 @@ instance IsCommand (Run config) where
         -- local mode
         Nothing -> do
             env <- decodeFileThrow configFile
-            withCoordinator (LocalConfig 1) $ \coord -> do
-                    Right transport <- createTransport (defaultTCPAddr "127.0.0.1" (show serverPort))
-                        defaultTCPParameters
-                    withStore dbPath $ \store -> 
-                        runSciFlow coord transport store (ResourceConfig M.empty) selection env wf
+            withCoordinator (LocalConfig 1) $ \coord ->
+                createTransport (defaultTCPAddr "localhost" (show serverPort))
+                defaultTCPParameters >>= \case
+                    Left ex -> errorS $ show ex
+                    Right transport -> withStore dbPath $ \store -> runSciFlow
+                        coord transport store (ResourceConfig M.empty) selection env wf
         Just ip -> do
             env <- decodeFileThrow configFile
             config <- decodeConfig ip serverPort configFile
-            withCoordinator config $ \coord -> do
-                Right transport <- createTransport (defaultTCPAddr ip (show serverPort))
-                    defaultTCPParameters
-                withStore dbPath $ \store -> 
-                    runSciFlow coord transport store (ResourceConfig M.empty) selection env wf
+            withCoordinator config $ \coord -> createTransport
+                (defaultTCPAddr ip (show serverPort)) defaultTCPParameters >>= \case
+                    Left ex -> errorS $ show ex
+                    Right transport -> withStore dbPath $ \store -> runSciFlow
+                        coord transport store (ResourceConfig M.empty)
+                        selection env wf
 
 run :: Coordinator coord
     => (String -> Int -> FilePath -> IO (Config coord))  -- ^ config reader
