@@ -8,11 +8,11 @@ import           Options.Applicative
 import Control.Workflow.Coordinator
 import Control.Workflow
 
-class Command a where
+class IsCommand a where
     runCommand :: (FromJSON env, Binary env)
                => a
                -> SciFlow env
                -> IO ()
 
-data Options where
-    Options :: Command a => a -> Options
+data Command where
+    Command :: IsCommand a => a -> Command

@@ -5,10 +5,6 @@ module Control.Workflow.Main.Command.Run (run) where
 
 import Data.Yaml (decodeFileThrow)
 import           Options.Applicative
-import Control.Workflow.Coordinator
-import Control.Workflow.Coordinator.Local (LocalConfig(..))
-import Control.Workflow.Types
-import Control.Workflow.DataStore
 import Data.Maybe (fromJust)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
 import Control.Workflow.Interpreter.Exec
@@ -17,6 +13,10 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as T
 
 import Control.Workflow.Main.Types
+import Control.Workflow.Coordinator
+import Control.Workflow.Coordinator.Local (LocalConfig(..))
+import Control.Workflow.Types
+import Control.Workflow.DataStore
 
 data Run a where
     Run :: Coordinator coord =>
@@ -28,7 +28,7 @@ data Run a where
         , selection :: Maybe [T.Text]
         } -> Run (Config coord)
 
-instance Command (Run config) where
+instance IsCommand (Run config) where
     runCommand Run{..} wf = case serverAddr of
         -- local mode
         Nothing -> do
@@ -49,8 +49,8 @@ instance Command (Run config) where
 
 run :: Coordinator coord
     => (String -> Int -> FilePath -> IO (Config coord))  -- ^ config reader
-    -> Parser Options
-run f1 = fmap Options $ Run <$> pure f1
+    -> Parser Command
+run f1 = fmap Command $ Run <$> pure f1
     <*> strOption
         ( long "db-path"
        <> value "sciflow.db"

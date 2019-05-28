@@ -16,11 +16,11 @@ import Control.Workflow.Main.Types
 
 data View = View
 
-instance Command View where
+instance IsCommand View where
     runCommand _ = putStrLn . renderCytoscape . mkGraph
 
-view :: Parser Options
-view = pure $ Options View
+view :: Parser Command
+view = pure $ Command View
 
 -------------------------------------------------------------------------------
 -- Graph

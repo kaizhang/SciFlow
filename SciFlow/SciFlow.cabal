@@ -42,7 +42,6 @@ library
     , constraints
     , cryptohash-sha256
     , distributed-process == 0.7.*
-    , distributed-process-monad-control
     , exceptions
     , hashable
     , lifted-async
@@ -50,7 +49,6 @@ library
     , memory
     , monad-control
     , network-transport == 0.5.*
-    , network-transport-tcp
     , rainbow
     , stm
     , sqlite-simple

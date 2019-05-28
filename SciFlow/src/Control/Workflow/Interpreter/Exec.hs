@@ -18,7 +18,6 @@ import           Control.Monad.IO.Class                      (liftIO)
 import           Control.Monad.Trans (lift)
 import Control.Distributed.Process (kill, processNodeId, call)
 import Control.Distributed.Process.Node (forkProcess, runProcess, newLocalNode, LocalNode)
-import Control.Distributed.Process.MonadBaseControl ()
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
 import Network.Transport (Transport)

@@ -21,7 +21,6 @@ module Control.Workflow.DataStore
 import Control.Monad (unless)
 import Control.Concurrent.MVar (withMVar, newMVar, MVar)
 import Control.Monad.Catch (MonadMask, bracket)
-import Control.Monad.Identity (Identity(..))
 import Data.Binary (Binary, encode, decode)
 import Data.Typeable (Typeable, typeOf)
 import Control.Monad.IO.Class (MonadIO, liftIO)

@@ -8,10 +8,10 @@ extra-deps:
     - distributed-process-monad-control-0.5.1.3
 
     - git:     https://github.com/haskell-distributed/distributed-static.git
-      commit:  b7591922edafb0203d8ef4c39a724ff0553327da
+      commit:  d34b5139a0c349fbda6ffea5fbbe960c3c91aeb1
 
     - git:     https://github.com/haskell-distributed/network-transport-tcp.git
-      commit:  d58250e2388b86a1865ac4139373cbdc106e72e1
+      commit:  5a08e32c73093c1338c09a17a95c456568394d48
 
     - git:     https://github.com/haskell-distributed/distributed-process.git
       commit:  660d554f6acd2dba8b605c84e8fa69e45708bc14

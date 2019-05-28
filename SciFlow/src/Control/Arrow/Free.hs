@@ -39,13 +39,11 @@ module Control.Arrow.Free
 import           Control.Arrow
 import           Control.Category
 import           Data.Bool           (Bool)
-import           Data.Constraint     (Constraint, Dict (..), mapDict, weaken1,
-                                      weaken2)
+import           Data.Constraint     (Constraint, Dict (..))
 import           Data.Either         (Either (..))
 import           Data.Function       (const, flip, ($))
 import           Data.List           (uncons)
 import           Data.Maybe          (maybe)
-import           Data.Monoid         (Monoid)
 import           Data.Tuple          (uncurry)
 
 -- | A natural transformation on type constructors of two arguments.

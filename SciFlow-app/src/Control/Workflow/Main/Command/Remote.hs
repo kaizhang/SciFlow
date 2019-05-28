@@ -18,14 +18,14 @@ data Remote a where
         , serverPort :: Int
         } -> Remote coord
 
-instance Command (Remote config) where
+instance IsCommand (Remote config) where
     runCommand Remote{..} = startClient proxy server . _function_table
       where
         server =  mkNodeId serverAddr serverPort
 
 remote :: Coordinator coord
        => Proxy coord
-       -> Parser Options
-remote p = fmap Options $ Remote <$> pure p
+       -> Parser Command
+remote p = fmap Command $ Remote <$> pure p
     <*> strOption (long "ip")
     <*> option auto (long "port")
