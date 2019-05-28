@@ -88,8 +88,10 @@ module Control.Workflow
     , Resource(..)
 
       -- * Construct workflow
+    , Builder
     , node
     , nodePar
+    , doc
     , nCore
     , memory
     , queue
