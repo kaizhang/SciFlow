@@ -34,7 +34,7 @@ instance IsCommand (Run config) where
         Nothing -> do
             env <- decodeFileThrow configFile
             withCoordinator (LocalConfig 1) $ \coord -> do
-                    Right transport <- createTransport (defaultTCPAddr "localhost" (show serverPort))
+                    Right transport <- createTransport (defaultTCPAddr "127.0.0.1" (show serverPort))
                         defaultTCPParameters
                     withStore dbPath $ \store -> 
                         runSciFlow coord transport store (ResourceConfig M.empty) selection env wf
