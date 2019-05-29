@@ -119,12 +119,12 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
                 Nothing -> handleAll cleanUp $ do
                     -- A Hack, because `runProcess` cannot return value.
                     result <- liftIO newEmptyMVar
-                    infoS $ show chash <> ": Running ..."
                     jobRes <- lift $ reader (M.lookup _job_name . _resource_config) >>= \case
                         Nothing -> return _job_resource
                         r -> return r
                     liftIO $ runProcess localNode $ do
                         pid <- reserve coord jobRes
+                        infoS $ show chash <> ": Running ..."
                         call (_dict rf) (processNodeId pid)
                             ((_table rf) (_job_name, encode env, input)) >>=
                             liftIO . putMVar result
@@ -137,8 +137,8 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
                         Right r -> do
                             let res = decode' r
                             saveItem store chash res
-                            setStatus store chash Complete
                             infoS $ show chash <> ": Complete!"
+                            setStatus store chash Complete
                             return res
         go
     ) _job_action
