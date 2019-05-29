@@ -10,20 +10,20 @@ module Control.Workflow.DataStore
     , openStore
     , closeStore
     , withStore
-    , markPending
-    , markFailed
+    , setStatus
+    , queryStatusPending
     , saveItem
     , fetchItem
-    , delRecord
-    , delJobs
-    , queryStatus
-    , queryStatusPending
+    , delItem
+    , delItems
     ) where
 
 import Control.Monad (unless)
-import Control.Concurrent.MVar (withMVar, newMVar, MVar)
+import Control.Concurrent.MVar (withMVar, newMVar, MVar, modifyMVar, modifyMVar_)
+import qualified Data.HashMap.Strict as M
 import Control.Monad.Catch (MonadMask, bracket)
 import Data.Binary (Binary, encode, decode)
+import Data.Hashable (Hashable(..))
 import Data.Typeable (Typeable, typeOf)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Database.SQLite.Simple
@@ -33,11 +33,22 @@ import qualified Data.ByteString.Char8 as B
 import qualified Crypto.Hash.SHA256 as C
 import Data.ByteArray.Encoding (convertToBase, Base(..))
 
--- | Data store.
-newtype DataStore = DataStore { _db_conn :: MVar Connection }
+-- | A data store consists of an in-memory job status table and a on-disk 
+-- cache.
+newtype DataStore = DataStore (MVar InternalStore)
+
+data InternalStore = InternalStore
+    { _db_conn :: Connection
+    , _db_status :: M.HashMap Key JobStatus }
 
 -- | A key is uniquely determined by the input hash and the name of the job.
 data Key = Key { _hash :: B.ByteString, _name :: T.Text }
+
+instance Eq Key where
+    a == b = _hash a == _hash b
+
+instance Hashable Key where
+    hashWithSalt s = hashWithSalt s . _hash
 
 instance Show Key where
     show (Key hash jn) = T.unpack jn <> "(" <> h <> ")"
@@ -52,9 +63,9 @@ mkKey input nm = Key hash nm
 {-# INLINE mkKey #-}
 
 -- | The status of jobs.
-data JobStatus = Pending
-               | Complete
+data JobStatus = Complete
                | Failed String
+               | Pending
                deriving (Eq, Generic, Show)
 
 instance Binary JobStatus
@@ -64,18 +75,17 @@ openStore :: MonadIO m => FilePath -> m DataStore
 openStore root = liftIO $ do
     db <- open root
     itemExist <- hasTable db "item_db"
-    metaExist <- hasTable db "meta_db"
-    unless (itemExist && metaExist) $ do
-        execute_ db "CREATE TABLE item_db(hash TEXT PRIMARY KEY, data BLOB)"
-        execute_ db
-            "CREATE TABLE meta_db(hash TEXT PRIMARY KEY, jobname TEXT, status BLOB)"
-        execute_ db "CREATE INDEX jobname_index ON meta_db(jobname)"
-    DataStore <$> newMVar db
+    unless itemExist $ do
+        execute_ db "CREATE TABLE item_db(hash TEXT PRIMARY KEY, jobname TEXT, data BLOB)"
+        execute_ db "CREATE INDEX jobname_index ON item_db(jobname)"
+    jobs <- completedJobs db
+    fmap DataStore $ newMVar $ InternalStore db $
+        M.fromList $ zip jobs $ repeat Complete
 {-# INLINE openStore #-}
 
 -- | Close the store and release resource.
 closeStore :: MonadIO m => DataStore -> m ()
-closeStore (DataStore db) = liftIO $ withMVar db close
+closeStore (DataStore s) = liftIO $ withMVar s $ \(InternalStore db _) -> close db
 {-# INLINE closeStore #-}
 
 withStore :: (MonadIO m, MonadMask m)
@@ -84,68 +94,63 @@ withStore root = bracket (openStore root) closeStore
 {-# INLINE withStore #-}
 
 -- | Mark a given job as pending.
-markPending :: MonadIO m => DataStore -> Key -> m ()
-markPending (DataStore store) (Key k n) = liftIO $ withMVar store $ \db ->
-    execute db "REPLACE INTO meta_db VALUES (?, ?, ?)" (k, n, encode Pending)
-{-# INLINE markPending #-}
-
--- | Mark a given job as failed.
-markFailed :: MonadIO m => DataStore -> Key -> String -> m ()
-markFailed (DataStore store) (Key k n) msg  = liftIO $ withMVar store $ \db ->
-    execute db "REPLACE INTO meta_db VALUES (?, ?, ?)" (k, n, encode $ Failed msg)
-{-# INLINE markFailed #-}
-
--- | Get the status of a given job.
-queryStatus :: MonadIO m => DataStore -> Key -> m (Maybe JobStatus)
-queryStatus (DataStore store) (Key k _) = liftIO $ withMVar store $ \db ->
-    query db "SELECT status FROM meta_db WHERE hash=?" [k] >>= \case
-        [Only result] -> return $ Just $ decode result
-        _ -> return Nothing
-{-# INLINE queryStatus #-}
+setStatus :: MonadIO m => DataStore -> Key -> JobStatus -> m ()
+setStatus (DataStore store) k st = liftIO $ modifyMVar_ store $ \db -> 
+    let dict = M.insert k st $ _db_status db
+    in return $ db{_db_status = dict}
+{-# INLINE setStatus #-}
 
 -- | Get the status of a given job and mark the job as pending if missing.
 queryStatusPending :: MonadIO m => DataStore -> Key -> m (Maybe JobStatus)
-queryStatusPending (DataStore store) (Key k n) = liftIO $ withMVar store $ \db ->
-    query db "SELECT status FROM meta_db WHERE hash=?" [k] >>= \case
-        [Only result] -> return $ Just $ decode result
-        _ -> do
-            execute db "REPLACE INTO meta_db VALUES (?, ?, ?)" (k, n, encode Pending)
-            return Nothing
+queryStatusPending (DataStore store) k = liftIO $ modifyMVar store $ \db ->
+    case M.lookup k (_db_status db) of
+        Nothing ->
+            let dict = M.insert k Pending $ _db_status db
+            in return (db{_db_status = dict}, Nothing)
+        Just st -> return (db, Just st)
 {-# INLINE queryStatusPending #-}
 
 -- | Save the data of a given job.
 saveItem :: (MonadIO m, Binary a) => DataStore -> Key -> a -> m ()
-saveItem (DataStore store) (Key k n) res = liftIO $ withMVar store $ \db -> do
-    execute db "REPLACE INTO item_db VALUES (?, ?)" (k, encode res)
-    execute db "REPLACE INTO meta_db VALUES (?, ?, ?)" (k, n, encode Complete)
+saveItem (DataStore store) (Key k n) res = liftIO $ withMVar store $
+    \(InternalStore db _) ->
+        execute db "REPLACE INTO item_db VALUES (?, ?, ?)" (k, n, encode res)
 {-# INLINE saveItem #-}
 
 -- | Get the data of a given job.
 fetchItem :: (MonadIO m, Binary a) => DataStore -> Key -> m a
-fetchItem (DataStore store) (Key k _) = liftIO $ withMVar store $ \db -> do
-    query db "SELECT data FROM item_db WHERE hash=?" [k] >>= \case
-        [Only result] -> return $ decode result
-        _ -> error "Item not found"
+fetchItem (DataStore store) (Key k _) = liftIO $ withMVar store $
+    \(InternalStore db _) ->
+        query db "SELECT data FROM item_db WHERE hash=?" [k] >>= \case
+            [Only result] -> return $ decode result
+            _ -> error "Item not found"
 {-# INLINE fetchItem #-}
 
 -- | Delete a record based on the key.
-delRecord :: MonadIO m => DataStore -> Key -> m ()
-delRecord (DataStore store) (Key k _) = liftIO $ withMVar store $ \db -> do
-    execute db "DELETE FROM meta_db WHERE hash= ?" [k]
-    execute db "DELETE FROM item_db WHERE hash= ?" [k]
-{-# INLINE delRecord #-}
+delItem :: MonadIO m => DataStore -> Key -> m ()
+delItem (DataStore store) (Key k _) = liftIO $ withMVar store $
+    \(InternalStore db _) -> execute db "DELETE FROM item_db WHERE hash= ?" [k]
+{-# INLINE delItem #-}
 
 -- | Delete all records with the given job name.
-delJobs :: MonadIO m
-        => DataStore
-        -> T.Text     -- ^ job name
-        -> m ()
-delJobs (DataStore store) jn = liftIO $ withMVar store $ \db -> undefined
-{-# INLINE delJobs #-}
+delItems :: MonadIO m
+         => DataStore
+         -> T.Text     -- ^ job name
+         -> m ()
+delItems (DataStore store) jn = liftIO $ withMVar store $
+    \(InternalStore db _) -> execute db "DELETE FROM item_db WHERE jobname= ?" [jn]
+{-# INLINE delItems #-}
 
 -------------------------------------------------------------------------------
 -- Low level functions
 -------------------------------------------------------------------------------
+
+-- | Get all completed jobs.
+completedJobs :: MonadIO m => Connection -> m [Key]
+completedJobs db = liftIO $ do
+    r <- query_ db "SELECT hash,jobname FROM item_db"
+    return $ flip map r $ \(h,n) -> Key h n
+{-# INLINE completedJobs #-}
 
 hasTable :: Connection -> String -> IO Bool
 hasTable db tablename = do

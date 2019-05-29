@@ -1,5 +1,5 @@
 name:                SciFlow
-version:             0.7.0
+version:             0.7.1
 synopsis:            Scientific workflow management system
 description:         SciFlow is a DSL for building type-safe computational workflows.
                      SciFlow supports distributed computing through Cloud Haskell.

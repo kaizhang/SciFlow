@@ -102,7 +102,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
     AsyncA $ \i -> do
         let chash = mkKey i _job_name
             cleanUp (SomeException ex) = do
-                markFailed store chash $ show ex
+                setStatus store chash $ Failed $ show ex
                 throwError Errored
             input | _job_parallel = encode [i]
                   | otherwise = encode i
@@ -132,6 +132,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
                         Right r -> do
                             let res = decode' r
                             saveItem store chash res
+                            setStatus store chash Complete
                             infoS $ show chash <> ": Complete!"
                             return res
         go
