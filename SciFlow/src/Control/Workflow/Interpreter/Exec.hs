@@ -132,6 +132,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
                     liftIO (takeMVar result) >>= \case
                         Left msg -> do
                             errorS $ show chash <> " Failed: " <> msg
+                            setStatus store chash $ Failed msg
                             throwError Errored
                         Right r -> do
                             let res = decode' r
