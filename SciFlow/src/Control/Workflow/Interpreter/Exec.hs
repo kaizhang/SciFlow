@@ -25,6 +25,7 @@ import Data.Binary (Binary(..), encode, decode)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar
 import qualified Data.Text as T
+import Data.List (foldl')
 
 import Control.Workflow.Types
 import Control.Workflow.Utils
@@ -84,9 +85,12 @@ execFlow localNode coord store selection env sciflow = eval (AsyncA . runFlow') 
 {-# INLINE execFlow #-}
 
 getDependencies :: Graph -> [T.Text] -> S.HashSet T.Text
-getDependencies gr ids = S.fromList $ ancestor ++ ids
+getDependencies gr ids = go S.empty ids
   where
-    ancestor = flip concatMap ids $ \i -> M.lookupDefault [] i gr'
+    go acc [] = acc 
+    go acc xs = go (foldl' (flip S.insert) acc xs) parents
+      where
+        parents = flip concatMap xs $ \i -> M.lookupDefault [] i gr'
     gr' = M.fromListWith (++) $ map (\e -> (_to e, [_from e])) $ _edges gr
 {-# INLINE getDependencies #-}
 

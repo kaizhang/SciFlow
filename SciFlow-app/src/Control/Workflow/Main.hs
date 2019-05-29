@@ -6,6 +6,7 @@ module Control.Workflow.Main
     , runParser
     , viewParser
     , remoteParser
+    , deleteParser
     ) where
 
 import Data.Aeson (FromJSON)
