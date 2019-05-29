@@ -57,7 +57,7 @@ main = do
                 createTransport (defaultTCPAddr "localhost" $ show port) defaultTCPParameters >>= \case
                     Left ex -> print ex
                     Right transport -> withStore storePath $ \store -> 
-                        runSciFlow coord transport store (ResourceConfig M.empty) Nothing 2 wf
+                        runSciFlow coord transport store (ResourceConfig M.empty) (Just ["S1"]) 2 wf
         -- Using the DRMAA backend
         "drmaa" -> do
             config <- getDefaultDrmaaConfig ["slave"]

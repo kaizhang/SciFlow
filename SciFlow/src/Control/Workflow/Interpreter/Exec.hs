@@ -84,9 +84,9 @@ execFlow localNode coord store selection env sciflow = eval (AsyncA . runFlow') 
 {-# INLINE execFlow #-}
 
 getDependencies :: Graph -> [T.Text] -> S.HashSet T.Text
-getDependencies gr ids = S.fromList $ flip concatMap ids $
-    \i -> M.lookupDefault [] i gr'
+getDependencies gr ids = S.fromList $ ancestor ++ ids
   where
+    ancestor = flip concatMap ids $ \i -> M.lookupDefault [] i gr'
     gr' = M.fromListWith (++) $ map (\e -> (_to e, [_from e])) $ _edges gr
 {-# INLINE getDependencies #-}
 

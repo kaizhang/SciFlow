@@ -23,6 +23,7 @@ library
       Control.Workflow.Main.Command.Run
       Control.Workflow.Main.Command.View
       Control.Workflow.Main.Command.Remote
+      Control.Workflow.Main.Command.Delete
       Control.Workflow.Main.Types
   hs-source-dirs: src
   build-depends:
