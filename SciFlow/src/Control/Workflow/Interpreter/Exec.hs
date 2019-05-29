@@ -109,7 +109,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
             decode' x | _job_parallel = let [r] = decode x in r
                       | otherwise = decode x
             go = queryStatusPending store chash >>= \case
-                Just Pending -> liftIO (threadDelay 1000) >> go
+                Just Pending -> liftIO (threadDelay 100000) >> go
                 Just (Failed _) -> throwError Errored
                 Just Complete -> fetchItem store chash
                 Nothing -> handleAll cleanUp $ do
