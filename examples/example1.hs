@@ -24,7 +24,7 @@ s2 = return . (!!1)
 s3 = return . (!!2)
 s4 = return . (!!3)
 s5 = return . (!!4)
-s6 (a,b,c,d) = liftIO $ threadDelay 10000000 >>  print [a,b,c,d]
+s6 (a,b,c,d) = liftIO $ threadDelay 5000000 >>  print [a,b,c,d]
     
 build "wf" [t| SciFlow Int |] $ do
     node "S0" 's0 $ return ()

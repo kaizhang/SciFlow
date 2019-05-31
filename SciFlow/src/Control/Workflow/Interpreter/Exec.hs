@@ -106,6 +106,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
     AsyncA $ \i -> do
         let chash = mkKey i _job_name
             cleanUp (SomeException ex) = do
+                errorS $ show chash <> " Failed: " <> show ex
                 setStatus store chash $ Failed $ show ex
                 throwError Errored
             input | _job_parallel = encode [i]
@@ -130,10 +131,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
                             liftIO . putMVar result
                         freeWorker coord pid
                     liftIO (takeMVar result) >>= \case
-                        Left msg -> do
-                            errorS $ show chash <> " Failed: " <> msg
-                            setStatus store chash $ Failed msg
-                            throwError Errored
+                        Left msg -> error msg
                         Right r -> do
                             let res = decode' r
                             saveItem store chash res
