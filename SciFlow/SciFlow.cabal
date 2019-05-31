@@ -29,10 +29,10 @@ library
     Control.Workflow.DataStore
     Control.Workflow.Types
     Control.Workflow.Utils
-
-  other-modules:
     Control.Arrow.Free
     Control.Arrow.Async
+
+  other-modules:
     Control.Workflow.Language.TH.Internal
 
   build-depends:

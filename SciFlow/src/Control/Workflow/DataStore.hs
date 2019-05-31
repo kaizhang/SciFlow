@@ -14,6 +14,7 @@ module Control.Workflow.DataStore
     , queryStatusPending
     , saveItem
     , fetchItem
+    , fetchItems
     , delItem
     , delItems
     ) where
@@ -125,6 +126,13 @@ fetchItem (DataStore store) (Key k _) = liftIO $ withMVar store $
             [Only result] -> return $ decode result
             _ -> error "Item not found"
 {-# INLINE fetchItem #-}
+
+-- | Given a job name, return a list of items associated with the job.
+fetchItems :: (MonadIO m, Binary a) => DataStore -> T.Text -> m [a]
+fetchItems (DataStore store) jn = liftIO $ withMVar store $
+    \(InternalStore db _) -> map (\(Only res) -> decode res) <$>
+        query db "SELECT data FROM item_db WHERE jobname=?" [jn] 
+{-# INLINE fetchItems #-}
 
 -- | Delete a record based on the key.
 delItem :: MonadIO m => DataStore -> Key -> m ()

@@ -44,6 +44,7 @@ data FunctionTable = FunctionTable
 newtype ResourceConfig = ResourceConfig
     { _resource_config :: M.HashMap T.Text Resource }
 
+-- TODO: This should be implemented using dependent type in future.
 -- | The basic component/step of a workflow.
 data Job env i o = Job
     { _job_name   :: T.Text   -- ^ The name of the job

@@ -24,5 +24,8 @@ defaultMain :: (Binary env, FromJSON env)
             -> [SubParser Command]  -- ^ Commands
             -> SciFlow env
             -> IO ()
-defaultMain h parsers flow = execParser (mkArgsParser h parsers) >>= \case
+defaultMain h parsers flow = customExecParser modifier argParser >>= \case 
     Command cmd -> runCommand cmd flow
+  where
+    argParser = mkArgsParser h parsers
+    modifier = prefs showHelpOnEmpty
