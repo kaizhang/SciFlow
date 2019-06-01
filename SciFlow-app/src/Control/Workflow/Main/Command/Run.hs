@@ -58,17 +58,21 @@ run f1 = fmap Command $ Run <$> pure f1
     <*> strOption
         ( long "db-path"
        <> value "sciflow.db"
+       <> help "Path to the workflow cache file."
        <> metavar "DB_PATH" )
     <*> strOption
         ( long "config"
+       <> help "Workflow configuration file."
        <> metavar "CONFIG_PATH" )
     <*> (optional . strOption)
         ( long "ip"
+       <> help "The ip address or hostname of the server."
        <> metavar "SERVER_ADDR" )
     <*> option auto
         ( long "port"
        <> short 'p'
        <> value 8888
+       <> help "The port number."
        <> metavar "8888" )
     <*> (optional . option (T.splitOn "," . T.pack <$> str))
         ( long "select"
