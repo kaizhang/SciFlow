@@ -5,6 +5,7 @@
 module Control.Workflow.Main.Command.Run (run) where
 
 import Data.Yaml (decodeFileThrow)
+import Data.Aeson
 import           Options.Applicative
 import Data.Maybe (fromJust)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
@@ -78,3 +79,9 @@ run f1 = fmap Command $ Run <$> pure f1
         ( long "select"
        <> metavar "NODE1,NODE2"
        <> help "Run only selected nodes.")
+
+instance FromJSON Resource where
+    parseJSON = withObject "Resource" $ \v -> Resource
+        <$> v .: "cpu"
+        <*> v .: "memory"
+        <*> v .: "queue"
