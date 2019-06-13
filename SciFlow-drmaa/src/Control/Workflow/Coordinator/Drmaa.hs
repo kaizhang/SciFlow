@@ -20,11 +20,13 @@ import Control.Concurrent.STM
 import Control.Concurrent (threadDelay)
 import Control.Monad (forever)
 import System.Environment (getExecutablePath, getEnv)
+import System.IO.Temp (withSystemTempFile)
+import System.IO (hPutStrLn)
+import System.Random (randomRIO)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
 import Control.Distributed.Process.Node
 import Text.Printf (printf)
 import Data.Maybe (fromMaybe)
-import System.Random (randomRIO)
 
 import Control.Workflow.Coordinator
 import Control.Workflow
@@ -38,6 +40,7 @@ data DrmaaConfig = DrmaaConfig
     , _memory_format :: String   -- ^ How to specify memory, default: "--mem=%dG"
     , _queue_format :: String
     , _drmaa_parameters :: Maybe String -- ^ additional drmaa parameters
+    , _wrap_script :: Bool   -- ^ Whether to wrap the command in a script (for systems that do not allow submitting binaries)
     }
 
 getDefaultDrmaaConfig :: [String]  -- ^ Parameters of the executable
@@ -51,7 +54,8 @@ getDefaultDrmaaConfig params = do
         , _cpu_format = "--ntasks-per-node=%d" 
         , _memory_format = "--mem=%d000"
         , _queue_format = "-p %s"
-        , _drmaa_parameters = Nothing }
+        , _drmaa_parameters = Nothing
+        , _wrap_script = False }
 
 data Drmaa = Drmaa
     { _worker_pool :: TMVar WorkerPool
@@ -174,12 +178,18 @@ spawnWorker :: DrmaaConfig -> Maybe Resource -> Process Worker
 spawnWorker config wc = do
     procName <- liftIO $ replicateM 16 $ randomRIO ('a', 'z')
     getSelfPid >>= register procName
-    let attr = D.defaultJobAttributes
-            { D._env = [("master_id", procName)]
-            , D._native_specification = Just paras }
-    liftIO $ D.runJob exe args attr >>= \case
-        Left err -> error err
-        Right _ -> return ()
+    let attr = D.defaultJobAttributes { D._env = [("master_id", procName)]
+                                      , D._native_specification = Just paras }
+    liftIO $ if _wrap_script config
+        then withSystemTempFile "drmaa_script_" $ \script h -> do
+            hPutStrLn h $ unwords $ exe : args
+            D.runJob script [] attr >>= \case
+                Left err -> error err
+                Right _ -> return ()
+        else do
+            D.runJob exe args attr >>= \case
+                Left err -> error err
+                Right _ -> return ()
     pid <- expect 
     return $ Worker pid Idle wc
   where

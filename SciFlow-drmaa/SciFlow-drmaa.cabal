@@ -26,6 +26,7 @@ library
     , network-transport-tcp
     , hostname
     , stm
+    , temporary
     , random
     , SciFlow >= 0.7.0
 
