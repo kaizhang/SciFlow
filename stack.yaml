@@ -1,6 +1,7 @@
 packages:
     - 'SciFlow'
     - 'SciFlow-drmaa'
+    - 'SciFlow-remote'
     - 'SciFlow-app'
 
 extra-deps:

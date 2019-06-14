@@ -1,0 +1,39 @@
+name:                SciFlow-remote
+version:             0.1.0
+synopsis:            Scientific workflow management system
+description:         Remote backend for SciFlow
+license:             MIT
+license-file:        LICENSE
+author:              Kai Zhang
+maintainer:          kai@kzhang.org
+copyright:           (c) 2019 Kai Zhang
+category:            Control
+build-type:          Simple
+cabal-version:       >=1.10
+
+extra-source-files:
+
+library
+  ghc-options: -Wall
+  exposed-modules:
+    Control.Workflow.Coordinator.Remote
+
+  build-depends:
+      base >= 4.7 && < 5.0
+    , unordered-containers
+    , distributed-process == 0.7.*
+    , directory
+    , network-transport-tcp
+    , hostname
+    , stm
+    , temporary
+    , random
+    , process
+    , SciFlow >= 0.7.0
+
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+
+source-repository  head
+  type: git
+  location: https://github.com/kaizhang/SciFlow.git

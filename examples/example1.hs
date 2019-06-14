@@ -12,6 +12,7 @@ import Data.Proxy (Proxy(..))
 
 import Control.Workflow
 import Control.Workflow.Coordinator.Local
+import Control.Workflow.Coordinator.Remote
 import Control.Workflow.Coordinator.Drmaa
 
 s0 :: () -> ReaderT Int IO [Int]
@@ -66,6 +67,15 @@ main = do
                     defaultTCPParameters
                 withStore storePath $ \store -> 
                     runSciFlow coord transport store resources Nothing 2 wf
+        -- Using the Remote backend
+        "remote" -> do
+            config <- getDefaultRemoteConfig ["slave"]
+            withCoordinator config $ \coord -> do
+                Right transport <- createTransport (defaultTCPAddr serverAddr $ show port)
+                    defaultTCPParameters
+                withStore storePath $ \store -> 
+                    runSciFlow coord transport store resources Nothing 2 wf
+
         -- DRMAA workers
         "slave" -> startClient (Proxy :: Proxy Drmaa)
             (mkNodeId serverAddr port) $ _function_table wf
