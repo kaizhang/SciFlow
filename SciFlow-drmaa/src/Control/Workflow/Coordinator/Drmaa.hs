@@ -20,6 +20,7 @@ import Control.Concurrent.STM
 import Control.Concurrent (threadDelay)
 import Control.Monad (forever)
 import System.Environment (getExecutablePath, getEnv)
+import System.Directory 
 import System.IO.Temp (withTempFile)
 import System.IO (hPutStrLn, hClose)
 import System.Random (randomRIO)
@@ -71,6 +72,8 @@ instance Coordinator Drmaa where
                 hPutStrLn h $ "#!/bin/sh"
                 hPutStrLn h $ unwords $ exe : args
                 hClose h
+                setPermissions script emptyPermissions
+                    {readable=True, executable=True}
             pool <- liftIO $ newTMVarIO $ WorkerPool 0 M.empty
             f $ Drmaa pool config (script, [])
         else do

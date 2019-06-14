@@ -23,6 +23,7 @@ library
     , drmaa >=0.3.0
     , unordered-containers
     , distributed-process == 0.7.*
+    , directory
     , network-transport-tcp
     , hostname
     , stm
