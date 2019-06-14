@@ -61,7 +61,7 @@ main = do
         -- Using the DRMAA backend
         "drmaa" -> do
             config <- getDefaultDrmaaConfig ["slave"]
-            withCoordinator config $ \coord -> do
+            withCoordinator config{_wrap_script=True} $ \coord -> do
                 Right transport <- createTransport (defaultTCPAddr serverAddr $ show port)
                     defaultTCPParameters
                 withStore storePath $ \store -> 

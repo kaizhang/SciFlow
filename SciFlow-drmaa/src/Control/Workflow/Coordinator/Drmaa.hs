@@ -20,8 +20,8 @@ import Control.Concurrent.STM
 import Control.Concurrent (threadDelay)
 import Control.Monad (forever)
 import System.Environment (getExecutablePath, getEnv)
-import System.IO.Temp (withSystemTempFile)
-import System.IO (hPutStrLn)
+import System.IO.Temp (withTempFile)
+import System.IO (hPutStrLn, hClose)
 import System.Random (randomRIO)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
 import Control.Distributed.Process.Node
@@ -59,14 +59,25 @@ getDefaultDrmaaConfig params = do
 
 data Drmaa = Drmaa
     { _worker_pool :: TMVar WorkerPool
-    , _config :: DrmaaConfig }
+    , _config :: DrmaaConfig
+    , _command_line :: (FilePath, [String]) }
 
 instance Coordinator Drmaa where
     type Config Drmaa = DrmaaConfig
 
-    withCoordinator config f = D.withSession $ liftIO drmaa >>= f
+    withCoordinator config f = D.withSession $ if _wrap_script config
+        then withTempFile "./" "drmaa_temp_" $ \script h -> do
+            liftIO $ do
+                hPutStrLn h $ "#!/bin/sh"
+                hPutStrLn h $ unwords $ exe : args
+                hClose h
+            pool <- liftIO $ newTMVarIO $ WorkerPool 0 M.empty
+            f $ Drmaa pool config (script, [])
+        else do
+            pool <- liftIO $ newTMVarIO $ WorkerPool 0 M.empty
+            f $ Drmaa pool config (exe, args)
       where
-        drmaa = Drmaa <$> newTMVarIO (WorkerPool 0 M.empty) <*> return config
+        (exe, args) = _cmd config
 
     initiate coord = do
         getSelfPid >>= register "SciFlow_master"
@@ -126,7 +137,7 @@ instance Coordinator Drmaa where
         Just (Left pool) -> do
             liftIO $ atomically $ putTMVar _worker_pool $
                 pool{_len_waitlist = _len_waitlist pool + 1}
-            worker <- spawnWorker _config wc
+            worker <- spawnWorker coord wc
             liftIO $ atomically $ do
                 pool' <- addWorker (_worker_id worker)
                     worker{_worker_status = Working } <$> takeTMVar _worker_pool
@@ -174,26 +185,20 @@ setWorkerStatus Drmaa{..} host status = (setStatus host status <$> takeTMVar _wo
     putTMVar _worker_pool
 {-# INLINE setWorkerStatus #-}
 
-spawnWorker :: DrmaaConfig -> Maybe Resource -> Process Worker
-spawnWorker config wc = do
+spawnWorker :: Drmaa -> Maybe Resource -> Process Worker
+spawnWorker drmaa wc = do
     procName <- liftIO $ replicateM 16 $ randomRIO ('a', 'z')
     getSelfPid >>= register procName
     let attr = D.defaultJobAttributes { D._env = [("master_id", procName)]
                                       , D._native_specification = Just paras }
-    liftIO $ if _wrap_script config
-        then withSystemTempFile "drmaa_script_" $ \script h -> do
-            hPutStrLn h $ unwords $ exe : args
-            D.runJob script [] attr >>= \case
-                Left err -> error err
-                Right _ -> return ()
-        else do
-            D.runJob exe args attr >>= \case
-                Left err -> error err
-                Right _ -> return ()
+    liftIO $ D.runJob exe args attr >>= \case
+        Left err -> error err
+        Right _ -> return ()
     pid <- expect 
     return $ Worker pid Idle wc
   where
-    (exe, args) = _cmd config
+    (exe, args) = _command_line drmaa
+    config = _config drmaa
     cpu = fromMaybe [] $ fmap (return . printf (_cpu_format config)) $
         wc >>= _num_cpu
     mem = fromMaybe [] $ fmap (return . printf (_memory_format config)) $
