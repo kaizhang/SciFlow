@@ -11,16 +11,23 @@ import qualified Data.ByteString.Lazy.Char8 as B
 import Control.Workflow.Interpreter.Graph
 import           Options.Applicative
 import Text.Printf (printf)
+import Data.List (isSuffixOf)
 
 import Control.Workflow.Main.Types
 
-data View = View
+newtype View = View FilePath
 
 instance IsCommand View where
-    runCommand _ = putStrLn . renderCytoscape . mkGraph
+    runCommand (View output) = writeFile output' . renderCytoscape . mkGraph
+      where
+        output' | ".html" `isSuffixOf` output = output
+                | otherwise = output <> ".html"
 
 view :: Parser Command
-view = pure $ Command View
+view = fmap Command $ View
+    <$> strArgument
+        ( metavar "workflow.html"
+       <> help "File name of the HTML output." ) 
 
 -------------------------------------------------------------------------------
 -- Graph
