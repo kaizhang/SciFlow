@@ -54,7 +54,7 @@ data Job env i o = Job
     , _job_action :: Choice (Action env) i o }   -- ^ The action to run
 
 data Action env i o where
-    Action :: (Typeable i, Typeable o, Binary i, Binary o) =>
+    Action :: (Typeable i, Typeable o, Binary i, Binary o, Show i, Show o) =>
         { _unAction :: i -> ReaderT env IO o   -- ^ The function to run
         } -> Action env i o
 

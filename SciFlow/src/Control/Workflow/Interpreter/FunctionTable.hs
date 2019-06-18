@@ -44,17 +44,20 @@ mkDict :: Binary env
        => Free (Flow env) i o
        -> Dictionary
 mkDict flow (nm, env, input) = do
-    res <- newMVar $ Left ""
+    res <- newMVar Nothing
     unA $ eval (go res) flow
-    readMVar res
+    readMVar res >>= \case
+        Nothing -> return $ Left "Job not run"
+        Just x -> return x
   where
     go res (Step job) = A $ modifyMVar_ res $ \case
-        Left msg -> if nm == _job_name job
-            then catch (runJob job) $ \(SomeException e) -> return $ Left $ show e
-            else return $ Left msg
+        Nothing -> if nm == _job_name job
+            then catch (runJob job) $ \(SomeException e) ->
+                return $ Just $ Left $ show e
+            else return Nothing
         x -> return x
       where
-    runJob job = Right . encode <$>
+    runJob job = Just . Right . encode <$>
         runReaderT (f (decode input)) (decode env)
       where
         f = runKleisli $ eval (Kleisli . _unAction) $ _job_action job
