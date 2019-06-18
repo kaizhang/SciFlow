@@ -24,6 +24,7 @@ library
       Control.Workflow.Main.Command.View
       Control.Workflow.Main.Command.Remote
       Control.Workflow.Main.Command.Delete
+      Control.Workflow.Main.Command.Show
       Control.Workflow.Main.Types
   hs-source-dirs: src
   build-depends:
@@ -38,5 +39,6 @@ library
     , text
     , yaml
     , network-transport-tcp
+    , pretty-show
     , SciFlow >=0.7.0
   default-language: Haskell2010

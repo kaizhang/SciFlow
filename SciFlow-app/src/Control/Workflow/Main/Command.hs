@@ -6,6 +6,7 @@ module Control.Workflow.Main.Command
     , viewParser
     , remoteParser
     , deleteParser
+    , showParser
     ) where
 
 import           Options.Applicative
@@ -15,6 +16,7 @@ import Control.Workflow.Main.Command.Run
 import Control.Workflow.Main.Command.View
 import Control.Workflow.Main.Command.Remote
 import Control.Workflow.Main.Command.Delete
+import Control.Workflow.Main.Command.Show
 import Data.Proxy (Proxy(..))
 
 import Control.Workflow.Coordinator
@@ -51,13 +53,11 @@ deleteParser = SubParser
     , _subparser_desc = "Delete node cache"
     , _subparser      = delete }
 
-{-
 showParser :: SubParser Command
 showParser = SubParser
     { _subparser_name = "show"
     , _subparser_desc = "Show node cache"
     , _subparser      = show' }
--}
 
 mkArgsParser :: String   -- ^ Header of the Program helper.
              -> [SubParser a] -> ParserInfo a
