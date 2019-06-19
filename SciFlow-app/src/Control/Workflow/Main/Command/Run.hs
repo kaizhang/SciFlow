@@ -41,17 +41,20 @@ instance IsCommand (Run config) where
                 createTransport (defaultTCPAddr "localhost" (show serverPort))
                 defaultTCPParameters >>= \case
                     Left ex -> errorS $ show ex
-                    Right transport -> withStore dbPath $ \store -> runSciFlow
-                        coord transport store (ResourceConfig M.empty) selection env wf
+                    Right transport -> withStore dbPath $ \store ->
+                        runSciFlow coord transport store
+                            (ResourceConfig M.empty) selection env wf
+        -- Remote mode
         Just ip -> do
             env <- decodeFileThrow configFile
             config <- decodeConfig ip serverPort configFile
-            withCoordinator config{_queue_size=fromMaybe 50 nThread} $ \coord -> createTransport
-                (defaultTCPAddr ip (show serverPort)) defaultTCPParameters >>= \case
-                    Left ex -> errorS $ show ex
-                    Right transport -> withStore dbPath $ \store -> runSciFlow
-                        coord transport store (ResourceConfig M.empty)
-                        selection env wf
+            withCoordinator config $ \coord ->
+                createTransport (defaultTCPAddr ip (show serverPort))
+                    defaultTCPParameters >>= \case
+                        Left ex -> errorS $ show ex
+                        Right transport -> withStore dbPath $ \store ->
+                            runSciFlow coord transport store
+                                (ResourceConfig M.empty) selection env wf
 
 run :: Coordinator coord
     => (String -> Int -> FilePath -> IO (Config coord))  -- ^ config reader
@@ -80,8 +83,8 @@ run f1 = fmap Command $ Run <$> pure f1
         ( long "select"
        <> metavar "NODE1,NODE2"
        <> help "Run only selected nodes.")
-    <*> (optional . auto)
-        ( short "n"
+    <*> (optional . option auto)
+        ( short 'n'
        <> help "The number of parallel threads/jobs."
        <> metavar "JOBS" )
 
