@@ -23,7 +23,7 @@ import System.Directory
 import System.IO.Temp (withSystemTempFile)
 import System.IO (hPutStrLn, hClose)
 import System.Random (randomRIO)
-import System.Process (readProcess)
+import System.Process (readCreateProcess, shell)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
 import Control.Distributed.Process.Node
 import Text.Printf (printf)
@@ -180,14 +180,18 @@ spawnWorker config wc = do
     getSelfPid >>= register procName
 
     _ <- liftIO $ withSystemTempFile "temp_script_" $ \script h -> do
+        -- Prepare script
         cwd <- getCurrentDirectory
         hPutStrLn h $ "#!/bin/sh"
         hPutStrLn h $ "cd " <> cwd
         hPutStrLn h $ unwords $ "master_id=" <> procName : exe : args
         hClose h
         setPermissions script emptyPermissions {readable=True, executable=True}
-        readProcess (_submission_cmd config)
-            (script : catMaybes [_remote_parameters config, cpu, mem, q]) ""
+
+        -- Submit script
+        let cmd = shell $ unwords $ _submission_cmd config : script :
+                catMaybes [_remote_parameters config, cpu, mem, q]
+        readCreateProcess cmd []
 
     pid <- expect 
     return $ Worker pid Idle wc
