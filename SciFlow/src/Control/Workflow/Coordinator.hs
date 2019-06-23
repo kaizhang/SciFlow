@@ -40,6 +40,8 @@ class Coordinator coordinator where
     -- | Configuration
     type Config coordinator = config | config -> coordinator
 
+    setQueueSize :: Int -> Config coordinator -> Config coordinator
+
     -- | Initialize Coordinator on the server.
     withCoordinator :: (MonadMask m, MonadIO m)
                     => Config coordinator -> (coordinator -> m a) -> m a

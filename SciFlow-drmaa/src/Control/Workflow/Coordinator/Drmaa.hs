@@ -66,6 +66,8 @@ data Drmaa = Drmaa
 instance Coordinator Drmaa where
     type Config Drmaa = DrmaaConfig
 
+    setQueueSize n config = config{_queue_size=n}
+
     withCoordinator config f = D.withSession $ if _wrap_script config
         then withTempFile "./" "drmaa_temp_" $ \script h -> do
             liftIO $ do

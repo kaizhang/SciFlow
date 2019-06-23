@@ -47,7 +47,8 @@ instance IsCommand (Run config) where
         -- Remote mode
         Just ip -> do
             env <- decodeFileThrow configFile
-            config <- decodeConfig ip serverPort configFile
+            config <- setQueueSize (fromMaybe 10 nThread) <$>
+                decodeConfig ip serverPort configFile
             withCoordinator config $ \coord ->
                 createTransport (defaultTCPAddr ip (show serverPort))
                     defaultTCPParameters >>= \case

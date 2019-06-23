@@ -65,6 +65,8 @@ data Remote = Remote
 instance Coordinator Remote where
     type Config Remote = RemoteConfig
 
+    setQueueSize n config = config{_queue_size=n}
+
     withCoordinator config f = Remote <$>
         liftIO (newTMVarIO $ WorkerPool 0 M.empty) <*> return config >>= f
 

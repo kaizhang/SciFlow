@@ -24,6 +24,8 @@ data Local = Local WorkerCounter LocalConfig
 instance Coordinator Local where
     type Config Local = LocalConfig
 
+    setQueueSize n config = config{_queue_size = n}
+
     withCoordinator config f =
         (Local <$> liftIO (newTMVarIO 0) <*> return config) >>= f
 
