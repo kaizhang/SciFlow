@@ -189,8 +189,8 @@ spawnWorker config wc = do
         setPermissions script emptyPermissions {readable=True, executable=True}
 
         -- Submit script
-        let cmd = shell $ unwords $ _submission_cmd config : script :
-                catMaybes [_remote_parameters config, cpu, mem, q]
+        let cmd = shell $ unwords $ _submission_cmd config : catMaybes
+                [_remote_parameters config, cpu, mem, q, Just script]
         readCreateProcess cmd []
 
     pid <- expect 

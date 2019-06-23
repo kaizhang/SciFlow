@@ -17,22 +17,15 @@ import Control.Workflow.Main.Types
 
 data Show' = Show'
     { jobName :: T.Text
-    , configFile :: FilePath
     , dbPath :: FilePath }
 
 instance IsCommand Show' where
-    runCommand Show'{..} flow = withStore dbPath $ \store -> do
-        env <- decodeFileThrow configFile
-        runKleisli (showFlow jobName store env flow) ()
+    runCommand Show'{..} flow = withStore dbPath $ \store ->
+        runKleisli (showFlow jobName store flow) ()
 
 show' :: Parser Command
 show' = fmap Command $ Show'
-    <$> strArgument
-        ( metavar "NODE")
-    <*> strOption
-        ( long "config"
-       <> help "Workflow configuration file."
-       <> metavar "CONFIG_PATH" )
+    <$> strArgument (metavar "NODE")
     <*> strOption
         ( long "db-path"
        <> value "sciflow.db"
@@ -41,10 +34,9 @@ show' = fmap Command $ Show'
 showFlow :: Binary env
          => T.Text
          -> DataStore
-         -> env
          -> SciFlow env
          -> Kleisli IO () ()
-showFlow jn store env sciflow = eval (Kleisli . runFlow') $ _flow sciflow
+showFlow jn store sciflow = eval (Kleisli . runFlow') $ _flow sciflow
   where
     runFlow' (Step job) = runKleisli $ eval ( \(Action _) ->
         Kleisli $ \i -> do
