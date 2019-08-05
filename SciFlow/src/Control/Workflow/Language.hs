@@ -105,9 +105,10 @@ node :: THExp q
      -> State NodeAttributes ()   -- ^ Option setter
      -> Builder ()
 node i f attrSetter = modify $ \wf ->
-    wf{ _nodes = M.insertWith undefined i nd $ _nodes wf }
+    wf{ _nodes = M.insertWith errMsg i nd $ _nodes wf }
   where
     nd = mkNode f attrSetter
+    errMsg = error $ "Duplicated nodes: " <> T.unpack i
 {-# INLINE node #-}
 
 -- | Define a step that will be executed in parallel, i.e.,
@@ -119,14 +120,17 @@ nodePar :: THExp q
         -> State NodeAttributes ()
         -> Builder ()
 nodePar i f attrSetter = modify $ \wf ->
-    wf{ _nodes = M.insertWith undefined i nd{_node_parallel=True} $ _nodes wf }
+    wf{ _nodes = M.insertWith errMsg i nd{_node_parallel=True} $ _nodes wf }
   where
     nd = mkNode f attrSetter
+    errMsg = error $ "Duplicated nodes: " <> T.unpack i
 {-# INLINE nodePar #-}
 
 linkFromTo :: [T.Text] -> T.Text -> Builder ()
 linkFromTo ps to = modify $ \wf ->
-    wf{ _parents = M.insertWith undefined to ps $ _parents wf }
+    wf{ _parents = M.insertWith errMsg to ps $ _parents wf }
+  where
+    errMsg = error $ "Duplicated links FROM " <> show ps <> " TO " <> show to
 {-# INLINE linkFromTo #-}
 
 -- | Connect nodes.

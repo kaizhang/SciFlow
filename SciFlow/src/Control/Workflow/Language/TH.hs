@@ -67,14 +67,14 @@ mkDefs :: Workflow
        -> Q (String, [FunDef])
 mkDefs wf x = do
     funDefs <- execStateT (define x) M.empty
-    return (fst $ M.lookupDefault undefined x funDefs, M.elems funDefs)
+    return (fst $ M.lookupDefault (errMsg x) x funDefs, M.elems funDefs)
   where
     define :: T.Text
            -> StateT (M.HashMap T.Text FunDef) Q ()
     define nid = do
         mapM_ define ps
         funDefs <- get 
-        let parentNames = map (fst . flip (M.lookupDefault undefined) funDefs) ps
+        let parentNames = flip map ps $ \p -> fst $ M.lookupDefault (errMsg p) p funDefs
         e <- lift $ link parentNames $ mkJob nid $
             M.lookupDefault (errMsg nid) nid $ _nodes wf
         let dec = (ndName, ValD (VarP $ mkName ndName) (NormalB e) [])
@@ -82,7 +82,7 @@ mkDefs wf x = do
       where
         ps = M.lookupDefault [] nid $ _parents wf
         ndName = T.unpack $ "f_" <> nid
-        errMsg = error . ("Node not found: " ++) .  T.unpack
+    errMsg = error . ("Node not found: " ++) .  T.unpack
 {-# INLINE mkDefs #-}
      
 -- | Get all the sinks, i.e., nodes with no children.
