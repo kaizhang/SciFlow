@@ -134,6 +134,15 @@ fetchItems (DataStore store) jn = liftIO $ withMVar store $
         query db "SELECT data FROM item_db WHERE jobname=?" [jn] 
 {-# INLINE fetchItems #-}
 
+{-
+-- | Given a job name, return a list of items associated with the job.
+fetchItemsBS :: (MonadIO m, Binary a) => DataStore -> T.Text -> m [a]
+fetchItemsBS (DataStore store) jn = liftIO $ withMVar store $
+    \(InternalStore db _) -> map (\(Only res) -> decode res) <$>
+        query db "SELECT data FROM item_db WHERE jobname=?" [jn] 
+{-# INLINE fetchItemsBS #-}
+-}
+
 -- | Delete a record based on the key.
 delItem :: MonadIO m => DataStore -> Key -> m ()
 delItem (DataStore store) (Key k _) = liftIO $ withMVar store $

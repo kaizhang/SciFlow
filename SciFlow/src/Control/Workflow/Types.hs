@@ -69,7 +69,7 @@ step job = effect $ Step job
 data Resource = Resource
     { _num_cpu :: Maybe Int   -- ^ The number of CPU needed
     , _total_memory :: Maybe Int    -- ^ Memory in GB
-    , _submit_queue :: Maybe String -- ^ Job submitting queue
+    , _submit_params :: Maybe String -- ^ Job submitting queue
     } deriving (Eq, Generic, Show, Lift)
 
 instance Binary Resource

@@ -40,7 +40,6 @@ data RemoteConfig = RemoteConfig
     , _submission_cmd :: String     -- ^ Command for job submission, e.g., "qsub".
     , _cpu_format :: String   -- ^ How to specify cpu number, default: "--ntasks-per-node=%d"
     , _memory_format :: String   -- ^ How to specify memory, default: "--mem=%dG"
-    , _queue_format :: String
     , _remote_parameters :: Maybe String -- ^ additional drmaa parameters
     }
 
@@ -55,7 +54,6 @@ getDefaultRemoteConfig params = do
         , _submission_cmd = "sbatch"
         , _cpu_format = "--ntasks-per-node=%d" 
         , _memory_format = "--mem=%d000"
-        , _queue_format = "-p %s"
         , _remote_parameters = Nothing }
 
 data Remote = Remote
@@ -192,7 +190,8 @@ spawnWorker config wc = do
 
         -- Submit script
         let cmd = shell $ unwords $ _submission_cmd config : catMaybes
-                [_remote_parameters config, cpu, mem, q, Just script]
+                [ _remote_parameters config, wc >>= _submit_params
+                , cpu, mem, Just script ]
         readCreateProcess cmd []
 
     pid <- expect 
@@ -201,6 +200,5 @@ spawnWorker config wc = do
     (exe, args) = _cmd config
     cpu = printf (_cpu_format config) <$> (wc >>= _num_cpu)
     mem = printf (_memory_format config) <$> (wc >>= _total_memory)
-    q = printf (_queue_format config) <$> (wc >>= _submit_queue)
 {-# INLINE spawnWorker #-}
 

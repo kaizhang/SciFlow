@@ -6,6 +6,7 @@ module Control.Workflow.Main.Command.Run (run) where
 
 import Data.Yaml (decodeFileThrow)
 import Data.Aeson
+import           Data.Aeson.Types (parseEither)
 import           Options.Applicative
 import Data.Maybe (fromJust, fromMaybe)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
@@ -33,29 +34,28 @@ data Run a where
         } -> Run (Config coord)
 
 instance IsCommand (Run config) where
-    runCommand Run{..} wf = case serverAddr of
-        -- local mode
-        Nothing -> do
-            env <- decodeFileThrow configFile
-            withCoordinator (LocalConfig $ fromMaybe 1 nThread) $ \coord ->
+    runCommand Run{..} wf = do
+        env <- decodeFileThrow configFile
+        resource <- decodeFileThrow configFile
+        case serverAddr of
+            -- local mode
+            Nothing -> withCoordinator (LocalConfig $ fromMaybe 1 nThread) $ \coord ->
                 createTransport (defaultTCPAddr "localhost" (show serverPort))
                 defaultTCPParameters >>= \case
                     Left ex -> errorS $ show ex
                     Right transport -> withStore dbPath $ \store ->
                         runSciFlow coord transport store
-                            (ResourceConfig M.empty) selection env wf
-        -- Remote mode
-        Just ip -> do
-            env <- decodeFileThrow configFile
-            config <- setQueueSize (fromMaybe 10 nThread) <$>
-                decodeConfig ip serverPort configFile
-            withCoordinator config $ \coord ->
-                createTransport (defaultTCPAddr ip (show serverPort))
-                    defaultTCPParameters >>= \case
-                        Left ex -> errorS $ show ex
-                        Right transport -> withStore dbPath $ \store ->
-                            runSciFlow coord transport store
-                                (ResourceConfig M.empty) selection env wf
+                            resource selection env wf
+            -- Remote mode
+            Just ip -> do
+                config <- setQueueSize (fromMaybe 10 nThread) <$>
+                    decodeConfig ip serverPort configFile
+                withCoordinator config $ \coord ->
+                    createTransport (defaultTCPAddr ip (show serverPort))
+                        defaultTCPParameters >>= \case
+                            Left ex -> errorS $ show ex
+                            Right transport -> withStore dbPath $ \store ->
+                                runSciFlow coord transport store resource selection env wf
 
 run :: Coordinator coord
     => (String -> Int -> FilePath -> IO (Config coord))  -- ^ config reader
@@ -91,6 +91,14 @@ run f1 = fmap Command $ Run <$> pure f1
 
 instance FromJSON Resource where
     parseJSON = withObject "Resource" $ \v -> Resource
-        <$> v .: "cpu"
-        <*> v .: "memory"
-        <*> v .: "queue"
+        <$> v .:? "cpu"
+        <*> v .:? "memory"
+        <*> v .:? "parameter"
+
+instance FromJSON ResourceConfig where
+    parseJSON = withObject "ResourceConfig" $ \obj ->
+        return $ case M.lookup "resource" obj of
+            Nothing -> ResourceConfig M.empty
+            Just res -> ResourceConfig $ case parseEither parseJSON res of
+                Left err -> error err
+                Right r  -> r

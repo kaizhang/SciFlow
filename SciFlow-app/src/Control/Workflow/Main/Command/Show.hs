@@ -17,7 +17,8 @@ import Control.Workflow.Main.Types
 
 data Show' = Show'
     { jobName :: T.Text
-    , dbPath :: FilePath }
+    , dbPath :: FilePath
+    , raw :: Bool }
 
 instance IsCommand Show' where
     runCommand Show'{..} flow = withStore dbPath $ \store ->
@@ -30,6 +31,9 @@ show' = fmap Command $ Show'
         ( long "db-path"
        <> value "sciflow.db"
        <> metavar "DB_PATH" )
+    <*> switch
+        ( long "raw"
+       <> help "show raw content. (default: False)" )
 
 showFlow :: Binary env
          => T.Text
