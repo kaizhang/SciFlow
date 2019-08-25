@@ -190,14 +190,16 @@ spawnWorker config wc = do
 
         -- Submit script
         let cmd = shell $ unwords $ _submission_cmd config : catMaybes
-                [ _remote_parameters config, wc >>= _submit_params
-                , cpu, mem, Just script ]
+                [ params, cpu, mem, Just script ]
         readCreateProcess cmd []
 
     pid <- expect 
     return $ Worker pid Idle wc
   where
     (exe, args) = _cmd config
+    params = case wc >>= _submit_params of
+        Nothing -> _remote_parameters config
+        p -> p
     cpu = printf (_cpu_format config) <$> (wc >>= _num_cpu)
     mem = printf (_memory_format config) <$> (wc >>= _total_memory)
 {-# INLINE spawnWorker #-}
