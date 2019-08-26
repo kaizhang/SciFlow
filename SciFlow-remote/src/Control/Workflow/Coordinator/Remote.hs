@@ -192,6 +192,7 @@ spawnWorker config wc = do
         let cmd = shell $ unwords $ _submission_cmd config : catMaybes
                 [ params, cpu, mem, Just script ]
         readCreateProcess cmd []
+        threadDelay 500000
 
     pid <- expect 
     return $ Worker pid Idle wc
