@@ -33,6 +33,7 @@ library
     , aeson-qq
     , binary
     , bytestring
+    , hostname
     , raw-strings-qq
     , optparse-applicative
     , unordered-containers
@@ -40,5 +41,6 @@ library
     , yaml
     , network-transport-tcp
     , pretty-show
+    , port-utils
     , SciFlow >=0.7.0
   default-language: Haskell2010

@@ -14,6 +14,8 @@ import Control.Workflow.Interpreter.Exec
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import Network.HostName (getHostName)
+import Network.Socket.Free (getFreePort)
 
 import Control.Workflow.Main.Types
 import Control.Workflow.Coordinator
@@ -27,8 +29,9 @@ data Run a where
         { decodeConfig :: (String -> Int -> FilePath -> IO (Config coord))
         , dbPath :: FilePath
         , configFile :: FilePath
+        , useCloud :: Bool
         , serverAddr :: Maybe String
-        , serverPort :: Int
+        , serverPort :: Maybe Int
         , selection :: Maybe [T.Text]
         , nThread :: Maybe Int
         } -> Run (Config coord)
@@ -36,26 +39,30 @@ data Run a where
 instance IsCommand (Run config) where
     runCommand Run{..} wf = do
         env <- decodeFileThrow configFile
-        resource <- decodeFileThrow configFile
-        case serverAddr of
-            -- local mode
-            Nothing -> withCoordinator (LocalConfig $ fromMaybe 1 nThread) $ \coord ->
-                createTransport (defaultTCPAddr "localhost" (show serverPort))
-                defaultTCPParameters >>= \case
-                    Left ex -> errorS $ show ex
-                    Right transport -> withStore dbPath $ \store ->
-                        runSciFlow coord transport store
-                            resource selection env wf
-            -- Remote mode
-            Just ip -> do
-                config <- setQueueSize (fromMaybe 10 nThread) <$>
-                    decodeConfig ip serverPort configFile
-                withCoordinator config $ \coord ->
-                    createTransport (defaultTCPAddr ip (show serverPort))
-                        defaultTCPParameters >>= \case
-                            Left ex -> errorS $ show ex
-                            Right transport -> withStore dbPath $ \store ->
-                                runSciFlow coord transport store resource selection env wf
+        port <- case serverPort of
+            Nothing -> getFreePort
+            Just p -> return p
+        if useCloud then runLocal env port else runCloud env port
+      where
+        runLocal env port = withCoordinator (LocalConfig $ fromMaybe 1 nThread) $ \coord ->
+            createTransport (defaultTCPAddr "localhost" (show port))
+            defaultTCPParameters >>= \case
+                Left ex -> errorS $ show ex
+                Right transport -> withStore dbPath $ \store ->
+                    runSciFlow coord transport store
+                        (ResourceConfig M.empty) selection env wf
+        runCloud env port = do
+            resource <- decodeFileThrow configFile
+            ip <- case serverAddr of
+                Nothing -> getHostName
+                Just x -> return x
+            config <- setQueueSize (fromMaybe 10 nThread) <$>
+                decodeConfig ip port configFile
+            createTransport (defaultTCPAddr ip (show port)) defaultTCPParameters >>= \case
+                Left ex -> errorS $ show ex
+                Right transport -> withCoordinator config $ \coord ->
+                    withStore dbPath $ \store -> runSciFlow coord transport
+                        store resource selection env wf
 
 run :: Coordinator coord
     => (String -> Int -> FilePath -> IO (Config coord))  -- ^ config reader
@@ -70,16 +77,18 @@ run f1 = fmap Command $ Run <$> pure f1
         ( long "config"
        <> help "Workflow configuration file."
        <> metavar "CONFIG_PATH" )
+    <*> switch
+        ( long "cloud"
+       <> help "Use distributed computing." )
     <*> (optional . strOption)
-        ( long "ip"
-       <> help "The ip address or hostname of the server."
-       <> metavar "SERVER_ADDR" )
-    <*> option auto
+        ( long "master-ip"
+       <> help "The ip address of the master server. The default uses the hostname."
+       <> metavar "MASTER_ADDR" )
+    <*> (optional . option auto)
         ( long "port"
        <> short 'p'
-       <> value 8888
        <> help "The port number."
-       <> metavar "8888" )
+       <> metavar "PORT" )
     <*> (optional . option (T.splitOn "," . T.pack <$> str))
         ( long "select"
        <> metavar "NODE1,NODE2"
