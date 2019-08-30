@@ -42,7 +42,7 @@ instance IsCommand (Run config) where
         port <- case serverPort of
             Nothing -> getFreePort
             Just p -> return p
-        if useCloud then runLocal env port else runCloud env port
+        if useCloud then runCloud env port else runLocal env port
       where
         runLocal env port = withCoordinator (LocalConfig $ fromMaybe 1 nThread) $ \coord ->
             createTransport (defaultTCPAddr "localhost" (show port))
@@ -71,31 +71,31 @@ run f1 = fmap Command $ Run <$> pure f1
     <*> strOption
         ( long "db-path"
        <> value "sciflow.db"
-       <> help "Path to the workflow cache file."
+       <> help "Path to the workflow cache file"
        <> metavar "DB_PATH" )
     <*> strOption
         ( long "config"
-       <> help "Workflow configuration file."
+       <> help "Workflow configuration file"
        <> metavar "CONFIG_PATH" )
     <*> switch
         ( long "cloud"
-       <> help "Use distributed computing." )
+       <> help "Use distributed computing" )
     <*> (optional . strOption)
         ( long "master-ip"
-       <> help "The ip address of the master server. The default uses the hostname."
+       <> help "The ip address of the master server. The default uses the hostname"
        <> metavar "MASTER_ADDR" )
     <*> (optional . option auto)
         ( long "port"
        <> short 'p'
-       <> help "The port number."
+       <> help "The port number"
        <> metavar "PORT" )
     <*> (optional . option (T.splitOn "," . T.pack <$> str))
         ( long "select"
        <> metavar "NODE1,NODE2"
-       <> help "Run only selected nodes.")
+       <> help "Run only selected nodes")
     <*> (optional . option auto)
         ( short 'n'
-       <> help "The number of parallel threads/jobs."
+       <> help "The number of parallel threads/jobs"
        <> metavar "JOBS" )
 
 instance FromJSON Resource where
