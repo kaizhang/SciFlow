@@ -1,4 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Control.Workflow.Main.Command.Show (show') where
 
@@ -9,9 +11,11 @@ import Control.Monad (when)
 import Control.Arrow.Free (eval)
 import Data.Binary(Binary)
 import           Options.Applicative
-import Control.Workflow.DataStore (mkKey, withStore, fetchItem, DataStore(..))
+import Control.Workflow.DataStore (mkKey, withStore, fetchItem, DataStore(..), queryStatus)
 import Control.Workflow.Types
 import Text.Show.Pretty (ppShow)
+import Control.Monad.Except (ExceptT, throwError, runExceptT)
+import Control.Monad.Trans (lift)
 
 import Control.Workflow.Main.Types
 
@@ -19,8 +23,9 @@ data Show' = Show'
     { dbPath :: FilePath }
 
 instance IsCommand Show' where
-    runCommand Show'{..} flow = withStore dbPath $ \store ->
-        runKleisli (showFlow store flow) ()
+    runCommand Show'{..} flow = withStore dbPath $ \store -> do
+        _ <- runExceptT $ runKleisli (showFlow store flow) ()
+        return ()
 
 show' :: Parser Command
 show' = fmap Command $ Show'
@@ -32,14 +37,16 @@ show' = fmap Command $ Show'
 showFlow :: Binary env
          => DataStore
          -> SciFlow env
-         -> Kleisli IO () ()
+         -> Kleisli (ExceptT () IO) () ()
 showFlow store sciflow = eval (Kleisli . runFlow') $ _flow sciflow
   where
     runFlow' (Step job) = runKleisli $ eval ( \(Action _) ->
         Kleisli $ \i -> do
             let key = mkKey i $ _job_name job
-            res <- fetchItem store key
-            putStrLn $ show key <> ": " <> ppShow res
---          when (_job_name job == jn) $ pPrint res
-            return res
+            lift (queryStatus store key) >>= \case
+                Nothing -> throwError ()
+                Just _ -> lift $ do
+                    res <- fetchItem store key
+                    putStrLn $ show key <> ": " <> ppShow res
+                    return res
         ) $ _job_action job

@@ -11,6 +11,7 @@ module Control.Workflow.DataStore
     , closeStore
     , withStore
     , setStatus
+    , queryStatus
     , queryStatusPending
     , saveItem
     , fetchItem
@@ -52,15 +53,15 @@ instance Hashable Key where
     hashWithSalt s = hashWithSalt s . _hash
 
 instance Show Key where
-    show (Key hash jn) = T.unpack jn <> "(" <> h <> ")"
+    show (Key h jn) = T.unpack jn <> "(" <> h' <> ")"
       where
-        h = B.unpack (B.take 4 hash) <> ".."
+        h' = B.unpack (B.take 4 h) <> ".."
 
 -- | Create the key from input and job name.
 mkKey :: (Typeable i, Binary i) => i -> T.Text -> Key
-mkKey input nm = Key hash nm
+mkKey input nm = Key h nm
   where
-    hash = convertToBase Base16 $ C.hashlazy $ encode (nm, show $ typeOf input, input)
+    h = convertToBase Base16 $ C.hashlazy $ encode (nm, show $ typeOf input, input)
 {-# INLINE mkKey #-}
 
 -- | The status of jobs.
@@ -100,6 +101,14 @@ setStatus (DataStore store) k st = liftIO $ modifyMVar_ store $ \db ->
     let dict = M.insert k st $ _db_status db
     in return $ db{_db_status = dict}
 {-# INLINE setStatus #-}
+
+-- | Get the status of a given job
+queryStatus :: MonadIO m => DataStore -> Key -> m (Maybe JobStatus)
+queryStatus (DataStore store) k = liftIO $ withMVar store $ \db ->
+    case M.lookup k (_db_status db) of
+        Nothing -> return Nothing
+        Just st -> return $ Just st
+{-# INLINE queryStatus #-}
 
 -- | Get the status of a given job and mark the job as pending if missing.
 queryStatusPending :: MonadIO m => DataStore -> Key -> m (Maybe JobStatus)
