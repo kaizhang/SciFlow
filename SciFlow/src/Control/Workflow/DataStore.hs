@@ -15,6 +15,7 @@ module Control.Workflow.DataStore
     , queryStatusPending
     , saveItem
     , fetchItem
+    , fetchItemBS
     , fetchItems
     , delItem
     , delItems
@@ -32,6 +33,7 @@ import Database.SQLite.Simple
 import GHC.Generics (Generic)
 import qualified Data.Text as T
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Lazy as BL
 import qualified Crypto.Hash.SHA256 as C
 import Data.ByteArray.Encoding (convertToBase, Base(..))
 
@@ -65,7 +67,7 @@ mkKey input nm = Key h nm
 {-# INLINE mkKey #-}
 
 -- | The status of jobs.
-data JobStatus = Complete
+data JobStatus = Complete BL.ByteString
                | Failed String
                | Pending
                deriving (Eq, Generic, Show)
@@ -80,9 +82,9 @@ openStore root = liftIO $ do
     unless itemExist $ do
         execute_ db "CREATE TABLE item_db(hash TEXT PRIMARY KEY, jobname TEXT, data BLOB)"
         execute_ db "CREATE INDEX jobname_index ON item_db(jobname)"
-    jobs <- completedJobs db
+    jobData <- completedJobs db
     fmap DataStore $ newMVar $ InternalStore db $
-        M.fromList $ zip jobs $ repeat Complete
+        M.fromList $ map (\(k,d) -> (k, Complete d)) jobData
 {-# INLINE openStore #-}
 
 -- | Close the store and release resource.
@@ -128,13 +130,18 @@ saveItem (DataStore store) (Key k n) res = liftIO $ withMVar store $
 {-# INLINE saveItem #-}
 
 -- | Get the data of a given job.
-fetchItem :: (MonadIO m, Binary a) => DataStore -> Key -> m a
-fetchItem (DataStore store) (Key k _) = liftIO $ withMVar store $
+fetchItem :: (MonadIO m, Binary a) => DataStore -> Key -> m (Maybe a)
+fetchItem store = (fmap . fmap) decode . fetchItemBS store
+{-# INLINE fetchItem #-}
+
+-- | Get the data of a given job.
+fetchItemBS :: MonadIO m => DataStore -> Key -> m (Maybe BL.ByteString)
+fetchItemBS (DataStore store) (Key k _) = liftIO $ withMVar store $
     \(InternalStore db _) ->
         query db "SELECT data FROM item_db WHERE hash=?" [k] >>= \case
-            [Only result] -> return $ decode result
-            _ -> error "Item not found"
-{-# INLINE fetchItem #-}
+            [Only result] -> return $ Just result
+            _ -> return Nothing
+{-# INLINE fetchItemBS #-}
 
 -- | Given a job name, return a list of items associated with the job.
 fetchItems :: (MonadIO m, Binary a) => DataStore -> T.Text -> m [a]
@@ -163,10 +170,10 @@ delItems (DataStore store) jn = liftIO $ withMVar store $
 -------------------------------------------------------------------------------
 
 -- | Get all completed jobs.
-completedJobs :: MonadIO m => Connection -> m [Key]
+completedJobs :: MonadIO m => Connection -> m [(Key, BL.ByteString)]
 completedJobs db = liftIO $ do
-    r <- query_ db "SELECT hash,jobname FROM item_db"
-    return $ flip map r $ \(h,n) -> Key h n
+    r <- query_ db "SELECT hash,jobname,data FROM item_db"
+    return $ flip map r $ \(h,n,dat) -> (Key h n, dat)
 {-# INLINE completedJobs #-}
 
 hasTable :: Connection -> String -> IO Bool

@@ -35,6 +35,7 @@ library
     , binary
     , bytestring
     , hostname
+    , mtl
     , raw-strings-qq
     , optparse-applicative
     , unordered-containers

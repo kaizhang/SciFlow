@@ -8,16 +8,16 @@ module Control.Workflow.Main.Command.Show (show') where
 
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
-import Control.Arrow
+import           Control.Arrow.Async
 import Control.Monad (forM_)
 import Control.Arrow.Free (eval)
-import Data.Binary(Binary)
+import Data.Binary (Binary, decode)
 import           Options.Applicative
-import Control.Workflow.DataStore (Key(..), mkKey, withStore, fetchItem, DataStore(..), queryStatus)
+import Control.Workflow.DataStore
 import Control.Workflow.Types
 import qualified Data.HashMap.Strict as M
 import Text.Show.Pretty (ppShow)
-import Control.Exception (handle, SomeException(..))
+import Control.Monad.Except
 import Control.Concurrent.MVar
 import Data.List
 import Data.Ord
@@ -31,7 +31,7 @@ data Show' = Show'
 instance IsCommand Show' where
     runCommand Show'{..} flow = withStore dbPath $ \store -> do
         cache <- newMVar M.empty
-        handle (\(SomeException _) -> return ()) $ runKleisli (showFlow cache store flow) ()
+        _ <- runExceptT $ runAsyncA (showFlow cache store flow) ()
         takeMVar cache >>= printCache . M.filterWithKey f
       where
         f k _ = case stepName of
@@ -61,16 +61,16 @@ showFlow :: Binary env
          => MVar (M.HashMap Key T.Text)
          -> DataStore
          -> SciFlow env
-         -> Kleisli IO () ()
-showFlow cache store sciflow = eval (Kleisli . runFlow') $ _flow sciflow
+         -> AsyncA (ExceptT () IO) () ()
+showFlow cache store sciflow = eval (AsyncA . runFlow') $ _flow sciflow
   where
-    runFlow' (Step job) = runKleisli $ eval ( \(Action _) ->
-        Kleisli $ \ ~i -> handle (\(SomeException _) -> return undefined) $ do
+    runFlow' (Step job) = runAsyncA $ eval ( \(Action _) ->
+        AsyncA $ \ !i -> do
             let key = mkKey i $ _job_name job
-            queryStatus store key >>= \case
-                Nothing -> return undefined
-                Just _ -> do
-                    res <- fetchItem store key
-                    modifyMVar_ cache $ return . M.insert key (T.pack $ ppShow res)
+            lift (queryStatus store key) >>= \case
+                Just (Complete dat) -> do
+                    let res = decode dat
+                    lift $ modifyMVar_ cache $ return . M.insert key (T.pack $ ppShow res)
                     return res
+                _ -> throwError ()
         ) $ _job_action job

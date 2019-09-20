@@ -116,7 +116,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
             go = queryStatusPending store chash >>= \case
                 Just Pending -> liftIO (threadDelay 100000) >> go
                 Just (Failed _) -> throwError Errored
-                Just Complete -> fetchItem store chash
+                Just (Complete dat) -> return $ decode dat
                 Nothing -> handleAll cleanUp $ do
                     -- A Hack, because `runProcess` cannot return value.
                     result <- liftIO newEmptyMVar
@@ -136,7 +136,7 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
                             let res = decode' r
                             saveItem store chash res
                             infoS $ show chash <> ": Complete!"
-                            setStatus store chash Complete
+                            setStatus store chash $ Complete $ encode res
                             return res
         go
     ) _job_action
