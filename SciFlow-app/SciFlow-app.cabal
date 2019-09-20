@@ -27,6 +27,7 @@ library
       Control.Workflow.Main.Command.Show
       Control.Workflow.Main.Types
   hs-source-dirs: src
+  ghc-options: -Wall
   build-depends:
       base >=4.7 && <5
     , aeson
@@ -34,7 +35,6 @@ library
     , binary
     , bytestring
     , hostname
-    , mtl
     , raw-strings-qq
     , optparse-applicative
     , unordered-containers

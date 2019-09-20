@@ -11,7 +11,6 @@ module Control.Workflow.Main
     ) where
 
 import Data.Aeson (FromJSON)
-import Control.Workflow.Coordinator
 import Control.Workflow
 import Data.Binary (Binary)
 import           Options.Applicative

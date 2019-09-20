@@ -4,8 +4,6 @@ module Control.Workflow.Main.Types where
 import Data.Aeson (FromJSON)
 import Data.Binary (Binary)
 
-import           Options.Applicative
-import Control.Workflow.Coordinator
 import Control.Workflow
 
 class IsCommand a where

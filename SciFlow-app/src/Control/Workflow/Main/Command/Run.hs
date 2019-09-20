@@ -8,12 +8,11 @@ import Data.Yaml (decodeFileThrow)
 import Data.Aeson
 import           Data.Aeson.Types (parseEither)
 import           Options.Applicative
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromMaybe)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
 import Control.Workflow.Interpreter.Exec
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
 import Network.HostName (getHostName)
 import Network.Socket.Free (getFreePort)
 

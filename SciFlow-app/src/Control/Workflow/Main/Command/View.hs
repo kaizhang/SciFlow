@@ -27,7 +27,7 @@ view :: Parser Command
 view = fmap Command $ View
     <$> strArgument
         ( metavar "workflow.html"
-       <> help "File name of the HTML output." ) 
+       <> help "File name of the HTML output" ) 
 
 -------------------------------------------------------------------------------
 -- Graph
