@@ -38,7 +38,6 @@ instance IsCommand Show' where
             Nothing -> True
             Just nm -> _name k == nm
     
-
 printCache :: M.HashMap Key T.Text -> IO ()
 printCache cache = forM_ records $ \(k, x) -> do
     T.putStrLn $ "<< " <> k  <> " >>"
@@ -68,9 +67,11 @@ showFlow cache store sciflow = eval (AsyncA . runFlow') $ _flow sciflow
         AsyncA $ \ !i -> do
             let key = mkKey i $ _job_name job
             lift (queryStatus store key) >>= \case
-                Just (Complete dat) -> do
+                Complete dat -> do
                     let res = decode dat
-                    lift $ modifyMVar_ cache $ return . M.insert key (T.pack $ ppShow res)
+                    lift $ modifyMVar_ cache $ \dict -> return $ if M.member key dict
+                        then dict
+                        else M.insert key (T.pack $ ppShow res) dict
                     return res
                 _ -> throwError ()
         ) $ _job_action job

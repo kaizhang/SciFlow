@@ -114,10 +114,10 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
             decode' x | _job_parallel = let [r] = decode x in r
                       | otherwise = decode x
             go = queryStatusPending store chash >>= \case
-                Just Pending -> liftIO (threadDelay 100000) >> go
-                Just (Failed _) -> throwError Errored
-                Just (Complete dat) -> return $ decode dat
-                Nothing -> handleAll cleanUp $ do
+                Pending -> liftIO (threadDelay 100000) >> go
+                Failed _ -> throwError Errored
+                Complete dat -> return $ decode dat
+                Missing -> handleAll cleanUp $ do
                     -- A Hack, because `runProcess` cannot return value.
                     result <- liftIO newEmptyMVar
                     jobRes <- lift $ reader (M.lookup _job_name . _resource_config) >>= \case

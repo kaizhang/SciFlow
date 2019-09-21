@@ -14,9 +14,6 @@ module Control.Workflow.DataStore
     , queryStatus
     , queryStatusPending
     , saveItem
-    , fetchItem
-    , fetchItemBS
-    , fetchItems
     , delItem
     , delItems
     ) where
@@ -70,6 +67,7 @@ mkKey input nm = Key h nm
 data JobStatus = Complete BL.ByteString
                | Failed String
                | Pending
+               | Missing
                deriving (Eq, Generic, Show)
 
 instance Binary JobStatus
@@ -82,9 +80,7 @@ openStore root = liftIO $ do
     unless itemExist $ do
         execute_ db "CREATE TABLE item_db(hash TEXT PRIMARY KEY, jobname TEXT, data BLOB)"
         execute_ db "CREATE INDEX jobname_index ON item_db(jobname)"
-    jobData <- completedJobs db
-    fmap DataStore $ newMVar $ InternalStore db $
-        M.fromList $ map (\(k,d) -> (k, Complete d)) jobData
+    fmap DataStore $ newMVar $ InternalStore db M.empty
 {-# INLINE openStore #-}
 
 -- | Close the store and release resource.
@@ -105,21 +101,33 @@ setStatus (DataStore store) k st = liftIO $ modifyMVar_ store $ \db ->
 {-# INLINE setStatus #-}
 
 -- | Get the status of a given job
-queryStatus :: MonadIO m => DataStore -> Key -> m (Maybe JobStatus)
-queryStatus (DataStore store) k = liftIO $ withMVar store $ \db ->
+queryStatus :: MonadIO m => DataStore -> Key -> m JobStatus
+queryStatus (DataStore store) k = liftIO $ modifyMVar store $ \db ->
     case M.lookup k (_db_status db) of
-        Nothing -> return Nothing
-        Just st -> return $ Just st
+        Nothing -> fetchItemBS db k >>= \case
+            Nothing -> 
+                let dict = M.insert k Missing $ _db_status db
+                in return (db{_db_status = dict}, Missing)
+            Just dat -> 
+                let st = Complete dat
+                    dict = M.insert k st $ _db_status db
+                in return (db{_db_status = dict}, st)
+        Just st -> return (db, st)
 {-# INLINE queryStatus #-}
 
 -- | Get the status of a given job and mark the job as pending if missing.
-queryStatusPending :: MonadIO m => DataStore -> Key -> m (Maybe JobStatus)
+queryStatusPending :: MonadIO m => DataStore -> Key -> m JobStatus
 queryStatusPending (DataStore store) k = liftIO $ modifyMVar store $ \db ->
     case M.lookup k (_db_status db) of
-        Nothing ->
-            let dict = M.insert k Pending $ _db_status db
-            in return (db{_db_status = dict}, Nothing)
-        Just st -> return (db, Just st)
+        Nothing -> fetchItemBS db k >>= \case
+            Nothing ->
+                let dict = M.insert k Pending $ _db_status db
+                in return (db{_db_status = dict}, Missing)
+            Just dat ->
+                let st = Complete dat
+                    dict = M.insert k st $ _db_status db
+                in return (db{_db_status = dict}, st)
+        Just st -> return (db, st)
 {-# INLINE queryStatusPending #-}
 
 -- | Save the data of a given job.
@@ -130,17 +138,16 @@ saveItem (DataStore store) (Key k n) res = liftIO $ withMVar store $
 {-# INLINE saveItem #-}
 
 -- | Get the data of a given job.
-fetchItem :: (MonadIO m, Binary a) => DataStore -> Key -> m (Maybe a)
+fetchItem :: (MonadIO m, Binary a) => InternalStore -> Key -> m (Maybe a)
 fetchItem store = (fmap . fmap) decode . fetchItemBS store
 {-# INLINE fetchItem #-}
 
 -- | Get the data of a given job.
-fetchItemBS :: MonadIO m => DataStore -> Key -> m (Maybe BL.ByteString)
-fetchItemBS (DataStore store) (Key k _) = liftIO $ withMVar store $
-    \(InternalStore db _) ->
-        query db "SELECT data FROM item_db WHERE hash=?" [k] >>= \case
-            [Only result] -> return $ Just result
-            _ -> return Nothing
+fetchItemBS :: MonadIO m => InternalStore -> Key -> m (Maybe BL.ByteString)
+fetchItemBS (InternalStore db _) key@(Key k _) = liftIO $
+    query db "SELECT data FROM item_db WHERE hash=?" [k] >>= \case
+        [Only result] -> return $ Just result
+        _ -> return Nothing
 {-# INLINE fetchItemBS #-}
 
 -- | Given a job name, return a list of items associated with the job.
