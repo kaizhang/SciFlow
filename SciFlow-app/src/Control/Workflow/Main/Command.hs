@@ -60,8 +60,9 @@ showParser = SubParser
     , _subparser      = show' }
 
 mkArgsParser :: String   -- ^ Header of the Program helper.
+             -> String   -- ^ Description
              -> [SubParser a] -> ParserInfo a
-mkArgsParser h cmd = info (helper <*> parser) $ fullDesc <> header h
+mkArgsParser h descr cmd = info (helper <*> parser) $ fullDesc <> header h <> progDesc descr
   where
     parser = subparser $ mconcat $ map mkSubParser cmd
 

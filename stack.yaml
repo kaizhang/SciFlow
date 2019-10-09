@@ -6,6 +6,7 @@ packages:
 extra-deps:
     - drmaa-0.3.0
     - distributed-process-monad-control-0.5.1.3
+    - jmacro-0.6.16
 
     - git:     https://github.com/haskell-distributed/distributed-static.git
       commit:  d34b5139a0c349fbda6ffea5fbbe960c3c91aeb1
