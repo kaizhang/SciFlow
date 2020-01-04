@@ -90,7 +90,7 @@ run f1 = fmap Command $ Run <$> pure f1
        <> metavar "PORT" )
     <*> (optional . option (T.splitOn "," . T.pack <$> str))
         ( long "select"
-       <> metavar "NODE1,NODE2"
+       <> metavar "STEP1,STEP2"
        <> help "Run only selected nodes")
     <*> (optional . option auto)
         ( short 'n'

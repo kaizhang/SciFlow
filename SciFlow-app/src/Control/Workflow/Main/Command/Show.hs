@@ -49,7 +49,7 @@ printCache cache = forM_ records $ \(k, x) -> do
 show' :: Parser Command
 show' = fmap Command $ Show'
     <$> (optional . strArgument)
-        ( metavar "NODE"
+        ( metavar "STEP"
        <> help "The name of the step" ) 
     <*> strOption
         ( long "db-path"

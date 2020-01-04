@@ -35,7 +35,7 @@ findChildren ids gr = S.toList $ go S.empty ids
 delete :: Parser Command
 delete = fmap Command $ Delete
     <$> (some . strArgument)
-        ( metavar "NODE1 [NODE2] [NODE3]")
+        ( metavar "STEP1 [STEP2] [STEP3]")
     <*> switch
         ( long "delete-all"
        <> help "Also delete nodes whose results depend on the input node. (default: False)" )
