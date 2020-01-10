@@ -4,7 +4,8 @@
 
 module Control.Workflow.Language
     ( -- * Defining workflows
-      node
+      uNode
+    , node
     , nodePar
     , (~>)
     , path
@@ -40,6 +41,8 @@ data Node = Node
     , _node_parallel :: Bool  -- ^ Should the job be run in parallel
     , _node_doc :: T.Text     -- ^ Documentation
     }
+    | UNode ExpQ
+    
 
 data NodeAttributes = NodeAttributes
     { _doc :: T.Text   -- ^ documentation
@@ -97,6 +100,18 @@ instance Semigroup Workflow where
 
 type Builder = State Workflow
 
+-- | Define an uncached step for pure lightweight computation. Such steps will
+-- not be saved and will be run each time the workflow is executed.
+uNode :: THExp q
+      => T.Text   -- ^ Node id
+      -> q        -- ^ functions with type @a -> b@.
+      -> Builder ()
+uNode nid f = modify $ \wf ->
+    wf{ _nodes = M.insertWith errMsg nid (UNode $ mkExp f) $ _nodes wf }
+  where
+    errMsg = error $ "Duplicated nodes: " <> T.unpack nid
+{-# INLINE uNode #-}
+
 -- | Define a step.
 node :: THExp q
      => T.Text   -- ^ Node id
@@ -104,11 +119,11 @@ node :: THExp q
                  -- functions with type @a -> ReaderT env IO b@.
      -> State NodeAttributes ()   -- ^ Option setter
      -> Builder ()
-node i f attrSetter = modify $ \wf ->
-    wf{ _nodes = M.insertWith errMsg i nd $ _nodes wf }
+node nid f attrSetter = modify $ \wf ->
+    wf{ _nodes = M.insertWith errMsg nid nd $ _nodes wf }
   where
     nd = mkNode f attrSetter
-    errMsg = error $ "Duplicated nodes: " <> T.unpack i
+    errMsg = error $ "Duplicated nodes: " <> T.unpack nid
 {-# INLINE node #-}
 
 -- | Define a step that will be executed in parallel, i.e.,

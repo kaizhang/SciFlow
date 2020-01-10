@@ -4,7 +4,6 @@
 
 import Control.Monad.Reader
 import Control.Concurrent (threadDelay)
-import Control.Lens
 import System.Environment
 import qualified Data.HashMap.Strict as M
 import Network.Transport.TCP
@@ -13,7 +12,8 @@ import Data.Proxy (Proxy(..))
 import Control.Workflow
 import Control.Workflow.Coordinator.Local
 import Control.Workflow.Coordinator.Remote
-import Control.Workflow.Coordinator.Drmaa
+import Control.Workflow.Main.Command.View
+import Control.Workflow.Interpreter.Graph
 
 s0 :: () -> ReaderT Int IO [Int]
 s0 = return . const [1..10]
@@ -24,7 +24,6 @@ s1 i = (i*) <$> ask
 s2 = return . (!!1)
 s3 = return . (!!2)
 s4 = return . (!!3)
-s5 = return . (!!4)
 s6 (a,b,c,d) = liftIO $ threadDelay 5000000 >>  print [a,b,c,d]
     
 build "wf" [t| SciFlow Int |] $ do
@@ -32,10 +31,10 @@ build "wf" [t| SciFlow Int |] $ do
     nodePar "S1" 's1 $ return ()
     ["S0"] ~> "S1"
 
-    node "S2" 's2 $ memory .= 30
-    node "S3" 's3 $ memory .= 30
-    node "S4" 's4 $ nCore .= 4
-    node "S5" 's5 $ queue .= Just "gpu"
+    node "S2" 's2 $ return ()
+    node "S3" 's3 $ return ()
+    node "S4" 's4 $ return ()
+    uNode "S5" [| (!!4) |]
     ["S0"] ~> "S2"
     ["S0"] ~> "S3"
     ["S0"] ~> "S4"
@@ -46,6 +45,7 @@ build "wf" [t| SciFlow Int |] $ do
 
 main :: IO ()
 main = do
+    writeFile "workflow.html" $ renderGraph $ mkGraph wf
     let serverAddr = "192.168.0.1"
         port = 23488
         storePath = "sciflow.db"
@@ -59,14 +59,6 @@ main = do
                     Left ex -> print ex
                     Right transport -> withStore storePath $ \store -> 
                         runSciFlow coord transport store (ResourceConfig M.empty) (Just ["S6"]) 2 wf
-        -- Using the DRMAA backend
-        "drmaa" -> do
-            config <- getDefaultDrmaaConfig ["slave"]
-            withCoordinator config{_wrap_script=True} $ \coord -> do
-                Right transport <- createTransport (defaultTCPAddr serverAddr $ show port)
-                    defaultTCPParameters
-                withStore storePath $ \store -> 
-                    runSciFlow coord transport store resources Nothing 2 wf
         -- Using the Remote backend
         "remote" -> do
             config <- getDefaultRemoteConfig ["slave"]
@@ -77,5 +69,5 @@ main = do
                     runSciFlow coord transport store resources Nothing 2 wf
 
         -- DRMAA workers
-        "slave" -> startClient (Proxy :: Proxy Drmaa)
+        "slave" -> startClient (Proxy :: Proxy Remote)
             (mkNodeId serverAddr port) $ _function_table wf

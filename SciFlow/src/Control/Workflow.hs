@@ -91,6 +91,7 @@ module Control.Workflow
     , Builder
     , node
     , nodePar
+    , uNode
     , doc
     , nCore
     , memory

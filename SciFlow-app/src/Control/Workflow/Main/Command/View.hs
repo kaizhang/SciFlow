@@ -2,7 +2,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Control.Workflow.Main.Command.View (view) where
+module Control.Workflow.Main.Command.View
+    ( view
+    , renderGraph
+    ) where
 
 import Data.Aeson (Value, toJSON)
 import Text.RawString.QQ (r)
