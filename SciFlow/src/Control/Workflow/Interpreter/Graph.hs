@@ -26,7 +26,9 @@ data Graph = Graph
 data Node = Node
     { _id :: T.Text
     , _label :: T.Text
-    , _descr :: T.Text }
+    , _descr :: T.Text
+    , _parallel :: Bool
+    }
 
 instance Hashable Node where
     hashWithSalt s = hashWithSalt s . _id
@@ -71,7 +73,8 @@ lastD _ = []
 toDiagram :: Free (Flow env) a b -> Diagram a b
 toDiagram = eval toDiagram'
   where
-    toDiagram' (Step Job{..}) = S (Node _job_name _job_name _job_descr)
+    toDiagram' (Step Job{..}) = S $
+        Node _job_name _job_name _job_descr _job_parallel
 {-# INLINE toDiagram #-}
   
 data Diagram a b where

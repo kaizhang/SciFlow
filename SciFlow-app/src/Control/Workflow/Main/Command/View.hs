@@ -53,6 +53,8 @@ renderGraph gr = html <> runDagre gr <> "</script></html>"
                     height: 100%;
                     width: 100%;
                 }
+                .node ellipse,
+                .node polygon,
                 .node rect {
                     stroke: #333;
                     fill: #fff;
@@ -70,8 +72,8 @@ renderGraph gr = html <> runDagre gr <> "</script></html>"
                 }
             </style>
             <script src="https://cdn.jsdelivr.net/npm/d3@5.12.0/dist/d3.min.js"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.4/dagre.min.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/dagre-d3@0.6.3/dist/dagre-d3.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/dagre-d3@0.6.4/dist/dagre-d3.min.js"></script>
 
             <link rel="stylesheet" href="https://dagrejs.github.io/project/dagre-d3/latest/demo/tipsy.css">
             <script src="https://code.jquery.com/jquery-1.9.1.min.js"></script>
@@ -117,7 +119,11 @@ runDagre gr = show $ renderJs [jmacro|
 
 mkNodes :: Graph -> Value
 mkNodes (Graph ns _) = toJSON $ M.fromList $ flip map ns $
-    \Node{..} -> (_label, M.fromList [("description" :: T.Text, _descr)])
+    \Node{..} ->
+        let attr = if _parallel
+                then [("description", _descr), ("shape", "rect")]
+                else [("description", _descr), ("shape", "diamond")]
+        in (_label, M.fromList (attr :: [(T.Text, T.Text)]))
 
 mkEdges :: Graph -> Value
 mkEdges (Graph _ es) = toJSON $ flip map es $ \Edge{..} -> (_from, _to)
