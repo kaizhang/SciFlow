@@ -6,7 +6,7 @@ license:             MIT
 license-file:        LICENSE
 author:              Kai Zhang
 maintainer:          kai@kzhang.org
-copyright:           (c) 2019 Kai Zhang
+copyright:           (c) 2019-2020 Kai Zhang
 category:            Control
 build-type:          Simple
 cabal-version:       >=1.10
@@ -23,7 +23,7 @@ library
     , unordered-containers
     , distributed-process == 0.7.*
     , directory
-    , network-transport-tcp
+    , network-transport-tcp >= 0.7.0
     , hostname
     , stm
     , temporary

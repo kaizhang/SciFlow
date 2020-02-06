@@ -4,7 +4,7 @@ version:        0.1.0
 description:    Building apps using SciFlow workflow management system.
 author:         Kai Zhang
 maintainer:     kai@kzhang.org
-copyright:      (c) 2019 Kai Zhang
+copyright:      (c) 2019-2020 Kai Zhang
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
@@ -41,7 +41,7 @@ library
     , unordered-containers
     , text
     , yaml
-    , network-transport-tcp
+    , network-transport-tcp >= 0.7.0
     , pretty-show
     , port-utils
     , SciFlow >=0.7.0
