@@ -75,6 +75,7 @@ toDiagram = eval toDiagram'
   where
     toDiagram' (Step Job{..}) = S $
         Node _job_name _job_name _job_descr _job_parallel
+    toDiagram' _ = Ident
 {-# INLINE toDiagram #-}
   
 data Diagram a b where

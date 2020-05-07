@@ -11,7 +11,9 @@ module Control.Workflow.Types
     , Job(..)
     , Action(..)
     , Flow(..)
+    , Env
     , step
+    , ustep
     ) where
 
 import Data.Binary (Binary)
@@ -53,17 +55,25 @@ data Job env i o = Job
     , _job_parallel :: Bool    -- ^ Whether to run this step in parallel
     , _job_action :: Choice (Action env) i o }   -- ^ The action to run
 
+type Env env = ReaderT env IO
+
 data Action env i o where
     Action :: (Typeable i, Typeable o, Binary i, Binary o, Show i, Show o) =>
-        { _unAction :: i -> ReaderT env IO o   -- ^ The function to run
+        { _unAction :: i -> Env env o   -- ^ The function to run
         } -> Action env i o
 
 -- | Free arrow side effect.
 data Flow env i o where
-    Step :: (Binary i, Binary o) => Job env i o -> Flow env i o
+    Step :: (Binary i, Binary o) => Job env i o -> Flow env i o   -- ^ A cached step
+    UStep :: (i -> Env env o) -> Flow env i o   -- ^ An uncached step
 
 step :: (Binary i, Binary o) => Job env i o -> Free (Flow env) i o
 step job = effect $ Step job
+{-# INLINE step #-}
+
+ustep :: (i -> Env env o) -> Free (Flow env) i o
+ustep job = effect $ UStep job
+{-# INLINE ustep #-}
 
 -- | Computational resource
 data Resource = Resource

@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
 -- This interpreter treat a workflow as a function lookup table. 
 -- Given a (key, state, input) tuple where state and input are in binary format
 -- , the table will return the output in binary format.
@@ -52,15 +53,16 @@ mkDict flow (nm, env, input) = do
   where
     go res (Step job) = A $ modifyMVar_ res $ \case
         Nothing -> if nm == _job_name job
-            then catch (runJob job) $ \(SomeException e) ->
+            then catch runJob $ \(SomeException e) ->
                 return $ Just $ Left $ show e
             else return Nothing
         x -> return x
       where
-    runJob job = Just . Right . encode <$>
-        runReaderT (f (decode input)) (decode env)
-      where
-        f = runKleisli $ eval (Kleisli . _unAction) $ _job_action job
+        runJob = Just . Right . encode <$>
+            runReaderT (f (decode input)) (decode env)
+          where
+            f = runKleisli $ eval (Kleisli . _unAction) $ _job_action job
+    go _ _ = A $ return ()
 
 -- | Helper type
 data A a b = A { unA :: IO () }

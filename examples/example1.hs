@@ -34,7 +34,7 @@ build "wf" [t| SciFlow Int |] $ do
     node "S2" 's2 $ return ()
     node "S3" 's3 $ return ()
     node "S4" 's4 $ return ()
-    uNode "S5" [| (!!4) |]
+    uNode "S5" [| return . (!!4) |]
     ["S0"] ~> "S2"
     ["S0"] ~> "S3"
     ["S0"] ~> "S4"

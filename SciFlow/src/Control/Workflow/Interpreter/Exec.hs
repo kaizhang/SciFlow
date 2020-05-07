@@ -50,8 +50,9 @@ runSciFlow coord transport store resource selection env sciflow = do
     runProcess nd $ do
         let fun = execFlow nd coord store
                 (fmap (getDependencies (mkGraph sciflow)) selection)
-                env sciflow
-        res <- liftIO $ runReaderT (runExceptT $ runAsyncA fun ()) resource
+                sciflow
+        res <- liftIO $ flip runReaderT env $ flip runReaderT resource $
+            runExceptT $ runAsyncA fun ()
         case res of
             Left Errored -> errorS "Program exits with errors"
             Left EarlyStopped -> infoS "Parts of the program finish successfully"
@@ -62,7 +63,8 @@ runSciFlow coord transport store resource selection env sciflow = do
 
 data RunStatus = EarlyStopped | Errored
 
-type FlowMonad = ExceptT RunStatus (ReaderT ResourceConfig IO)
+type FlowMonad env = ExceptT RunStatus (ResourceT (Env env))
+type ResourceT m = ReaderT ResourceConfig m
 
 -- | Flow interpreter.
 execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
@@ -70,10 +72,9 @@ execFlow :: forall coordinator env . (Coordinator coordinator, Binary env)
          -> coordinator
          -> DataStore
          -> Maybe (S.HashSet T.Text)
-         -> env
          -> SciFlow env
-         -> AsyncA FlowMonad () ()
-execFlow localNode coord store selection env sciflow = eval (AsyncA . runFlow') $ _flow sciflow
+         -> AsyncA (FlowMonad env) () ()
+execFlow localNode coord store selection sciflow = eval (AsyncA . runFlow') $ _flow sciflow
   where
     runFlow' (Step job) = case selection of
         Nothing -> run
@@ -81,7 +82,12 @@ execFlow localNode coord store selection env sciflow = eval (AsyncA . runFlow') 
             then run
             else const $ throwError EarlyStopped
       where
-        run = runJob localNode coord store (_function_table sciflow) env job
+        run = runJob localNode coord store (_function_table sciflow) job
+    runFlow' (UStep fun) = \i -> handleAll cleanUp $ lift $ lift $ fun i
+      where
+        cleanUp (SomeException ex) = do
+            errorS $ "Failed: " <> show ex
+            throwError Errored
 {-# INLINE execFlow #-}
 
 getDependencies :: Graph -> [T.Text] -> S.HashSet T.Text
@@ -99,10 +105,9 @@ runJob :: (Coordinator coordinator, Binary env)
        -> coordinator
        -> DataStore
        -> FunctionTable
-       -> env
        -> Job env i o
-       -> (i -> FlowMonad o)
-runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
+       -> (i -> FlowMonad env o)
+runJob localNode coord store rf Job{..} = runAsyncA $ eval ( \(Action _) ->
     AsyncA $ \i -> do
         let chash = mkKey i _job_name
             cleanUp (SomeException ex) = do
@@ -123,9 +128,11 @@ runJob localNode coord store rf env Job{..} = runAsyncA $ eval ( \(Action _) ->
                     jobRes <- lift $ reader (M.lookup _job_name . _resource_config) >>= \case
                         Nothing -> return _job_resource
                         r -> return r
+                    env <- lift $ lift ask
                     liftIO $ runProcess localNode $ do
                         pid <- reserve coord jobRes
                         infoS $ show chash <> ": Running ..."
+                        -- FIXME: Process hangs if remote process is killed.
                         call (_dict rf) (processNodeId pid)
                             ((_table rf) (_job_name, encode env, input)) >>=
                             liftIO . putMVar result

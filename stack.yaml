@@ -13,3 +13,4 @@ extra-deps:
       commit:  660d554f6acd2dba8b605c84e8fa69e45708bc14
 
 resolver: nightly-2019-05-22
+#resolver: lts-15.0

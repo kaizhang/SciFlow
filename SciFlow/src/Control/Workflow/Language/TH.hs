@@ -108,5 +108,5 @@ mkJob nid Node{..}
         , _job_parallel = False
         , _job_action = effect $ Action $_node_function 
         } |]
-mkJob _ (UNode fun) = [| arr $fun |]
+mkJob _ (UNode fun) = [| ustep $fun |]
 {-# INLINE mkJob #-}
