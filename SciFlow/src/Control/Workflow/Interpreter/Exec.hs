@@ -45,6 +45,7 @@ runSciFlow :: (Coordinator coordinator, Binary env)
            -> SciFlow env
            -> IO ()
 runSciFlow coord transport store resource selection env sciflow = do
+    saveEnv store env
     nd <- newLocalNode transport $ _rtable $ _function_table sciflow
     pidInit <- forkProcess nd $ initiate coord
     runProcess nd $ do

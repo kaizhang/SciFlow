@@ -10,6 +10,8 @@ module Control.Workflow.DataStore
     , openStore
     , closeStore
     , withStore
+    , saveEnv
+    , readEnv
     , setStatus
     , queryStatus
     , queryStatusPending
@@ -93,6 +95,18 @@ withStore :: (MonadIO m, MonadMask m)
 withStore root = bracket (openStore root) closeStore
 {-# INLINE withStore #-}
 
+envKey :: Key
+envKey = Key "SciFlow.configuration" "SciFlow.configuration"
+{-# INLINE envKey #-}
+
+saveEnv :: (Binary env, MonadIO m) => DataStore -> env -> m ()
+saveEnv store = saveItem store envKey
+{-# INLINE saveEnv #-}
+
+readEnv :: (Binary env, MonadIO m) => DataStore -> m (Maybe env)
+readEnv store = fetchItem store envKey
+{-# INLINE readEnv #-}
+
 -- | Mark a given job as pending.
 setStatus :: MonadIO m => DataStore -> Key -> JobStatus -> m ()
 setStatus (DataStore store) k st = liftIO $ modifyMVar_ store $ \db -> 
@@ -138,8 +152,9 @@ saveItem (DataStore store) (Key k n) res = liftIO $ withMVar store $
 {-# INLINE saveItem #-}
 
 -- | Get the data of a given job.
-fetchItem :: (MonadIO m, Binary a) => InternalStore -> Key -> m (Maybe a)
-fetchItem store = (fmap . fmap) decode . fetchItemBS store
+fetchItem :: (MonadIO m, Binary a) => DataStore -> Key -> m (Maybe a)
+fetchItem (DataStore store) key = liftIO $ withMVar store $ \db ->
+    (fmap . fmap) decode $ fetchItemBS db key
 {-# INLINE fetchItem #-}
 
 -- | Get the data of a given job.
