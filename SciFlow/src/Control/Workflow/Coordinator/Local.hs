@@ -48,3 +48,6 @@ instance Coordinator Local where
     freeWorker (Local counter _) _ = liftIO $ atomically $ do
         n <- takeTMVar counter
         putTMVar counter $ n - 1
+    setWorkerError (Local counter _) _ _ = liftIO $ atomically $ do
+        n <- takeTMVar counter
+        putTMVar counter $ n - 1

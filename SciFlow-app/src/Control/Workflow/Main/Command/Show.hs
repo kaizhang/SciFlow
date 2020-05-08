@@ -75,3 +75,4 @@ showFlow cache store sciflow = eval (AsyncA . runFlow') $ _flow sciflow
                     return res
                 _ -> throwError ()
         ) $ _job_action job
+    runFlow' _ = const $ throwError ()

@@ -13,7 +13,7 @@ import           Control.Arrow.Async
 import           Control.Arrow.Free                          (eval)
 import Control.Monad.Reader
 import Control.Monad.Except (ExceptT, throwError, runExceptT)
-import Control.Monad.Catch (SomeException(..), handleAll)
+import Control.Monad.Catch (SomeException(..), handleAll, catchAll)
 import           Control.Monad.IO.Class                      (liftIO)
 import           Control.Monad.Trans (lift)
 import Control.Distributed.Process (kill, processNodeId, call)
@@ -132,11 +132,14 @@ runJob localNode coord store rf Job{..} = runAsyncA $ eval ( \(Action _) ->
                     liftIO $ runProcess localNode $ do
                         pid <- reserve coord jobRes
                         infoS $ show chash <> ": Running ..."
-                        -- FIXME: Process hangs if remote process is killed.
-                        call (_dict rf) (processNodeId pid)
-                            ((_table rf) (_job_name, encode env, input)) >>=
-                            liftIO . putMVar result
-                        freeWorker coord pid
+                        r <- catchAll ( do
+                            r <- call (_dict rf) (processNodeId pid)
+                                ((_table rf) (_job_name, encode env, input))
+                            freeWorker coord pid
+                            return r ) $ \(SomeException ex) -> do
+                                setWorkerError coord (show ex) pid
+                                return $ Left $ show ex
+                        liftIO $ putMVar result r
                     liftIO (takeMVar result) >>= \case
                         Left msg -> error msg
                         Right r -> do

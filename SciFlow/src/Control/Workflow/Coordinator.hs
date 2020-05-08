@@ -36,33 +36,38 @@ import Data.Proxy (Proxy(..))
 
 import Control.Workflow.Types
 
+-- | Coordinator manages a pool of workers.
 class Coordinator coordinator where
+    -- Configuration
+
     -- | Configuration
     type Config coordinator = config | config -> coordinator
-
     setQueueSize :: Int -> Config coordinator -> Config coordinator
+
+    -- Master/server-side process
 
     -- | Initialize Coordinator on the server.
     withCoordinator :: (MonadMask m, MonadIO m)
                     => Config coordinator -> (coordinator -> m a) -> m a
-
     -- | Server initiation process
     initiate :: coordinator -> Process ()
-
     -- | Server shutdown process
     shutdown :: coordinator -> Process ()
 
+    -- Worker/client-side process
+
     startClient :: Proxy coordinator -> NodeId -> FunctionTable -> IO ()
 
-    -- | Get all workers.
-    getWorkers :: coordinator -> STM [Worker]
+    -- Operational functions
 
+    -- | Return all workers currently in the pool.
+    getWorkers :: coordinator -> STM [Worker]
     -- | Reserve a free worker. This function should block
     -- until a worker is reserved.
     reserve :: coordinator -> Maybe Resource -> Process ProcessId
-
-    -- | Set a worker free so that it can be assigned other jobs.
+    -- | Set a worker free but keep it alive so that it can be assigned other jobs.
     freeWorker :: MonadIO m => coordinator -> ProcessId -> m ()
+    setWorkerError :: MonadIO m => coordinator -> String -> ProcessId -> m ()
 
 -- | A worker.
 data Worker = Worker

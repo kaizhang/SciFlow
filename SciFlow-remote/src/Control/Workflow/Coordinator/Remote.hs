@@ -71,7 +71,7 @@ instance Coordinator Remote where
     initiate coord = do
         getSelfPid >>= register "SciFlow_master"
         -- Kill idle worker periodically.
-        forever $ liftIO (threadDelay 5000000) >> killIdleWorkers
+        forever $ liftIO (threadDelay 10000000) >> killIdleWorkers
       where
         killIdleWorkers = liftIO (atomically getIdleWorkers) >>= \case
             Nothing -> return ()
@@ -79,7 +79,7 @@ instance Coordinator Remote where
                 mapM_ (flip send Shutdown) workers
                 liftIO $ atomically $ putTMVar (_worker_pool coord) $
                     foldl' (flip removeWorker) pool workers
-        getIdleWorkers = filter ((==Idle) . _worker_status) <$>
+        getIdleWorkers = filter ((/=Working) . _worker_status) <$>
             getWorkers coord >>= \case
                 [] -> return Nothing
                 x -> do
@@ -151,6 +151,8 @@ instance Coordinator Remote where
         isQualified Worker{..} = _worker_status == Idle && wc == _worker_config
    
     freeWorker coord worker = liftIO $ atomically $ setWorkerStatus coord worker Idle
+    setWorkerError coord msg worker = liftIO $ atomically $
+        setWorkerStatus coord worker $ ErrorExit msg
 
 data WorkerPool = WorkerPool
     { _len_waitlist :: Int
