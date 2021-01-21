@@ -14,8 +14,6 @@ import           Control.Arrow.Free                          (eval)
 import Control.Monad.Reader
 import Control.Monad.Except (ExceptT, throwError, runExceptT)
 import Control.Monad.Catch (SomeException(..), handleAll, catchAll)
-import           Control.Monad.IO.Class                      (liftIO)
-import           Control.Monad.Trans (lift)
 import Control.Distributed.Process (kill, processNodeId, call)
 import Control.Distributed.Process.Node (forkProcess, runProcess, newLocalNode, LocalNode)
 import qualified Data.HashMap.Strict as M

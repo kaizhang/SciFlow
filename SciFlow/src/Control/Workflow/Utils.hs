@@ -10,9 +10,11 @@ module Control.Workflow.Utils
 import qualified Data.ByteString.Char8           as B
 import Network.Transport (EndPointAddress(..))
 import Control.Distributed.Process (NodeId(..))
+import qualified Data.Text as T
 import           Data.Time                       (defaultTimeLocale, formatTime,
                                                  getZonedTime)
 import           Rainbow
+import Data.Function ((&))
 import           System.IO
 import           Control.Monad.IO.Class                      (MonadIO, liftIO)
     
@@ -20,9 +22,9 @@ import           Control.Monad.IO.Class                      (MonadIO, liftIO)
 infoS :: MonadIO m => String -> m ()
 infoS txt = liftIO $ do
     t <- getTime
-    let prefix = bold $ chunk ("[INFO]" ++ t ++ " ") & fore green
+    let prefix = bold $ chunk ("[INFO]" <> t <> " ") & fore green
         msg = B.concat $ chunksToByteStrings toByteStringsColors8
-            [prefix, chunk txt & fore green]
+            [prefix, chunk (T.pack txt) & fore green]
     B.hPutStrLn stderr msg
 {-# INLINE infoS #-}
     
@@ -30,9 +32,9 @@ infoS txt = liftIO $ do
 errorS :: MonadIO m => String -> m ()
 errorS txt = liftIO $ do
     t <- getTime
-    let prefix = bold $ chunk ("[ERROR]" ++ t ++ " ") & fore red
+    let prefix = bold $ chunk ("[ERROR]" <> t <> " ") & fore red
         msg = B.concat $ chunksToByteStrings toByteStringsColors8
-            [prefix, chunk txt & fore red]
+            [prefix, chunk (T.pack txt) & fore red]
     B.hPutStrLn stderr msg
 {-# INLINE errorS #-}
     
@@ -40,15 +42,15 @@ errorS txt = liftIO $ do
 warnS :: MonadIO m => String -> m ()
 warnS txt = liftIO $ do
     t <- getTime
-    let prefix = bold $ chunk ("[WARN]" ++ t ++ " ") & fore yellow
+    let prefix = bold $ chunk ("[WARN]" <> t <> " ") & fore yellow
         msg = B.concat $ chunksToByteStrings toByteStringsColors8
-            [prefix, chunk txt & fore red]
+            [prefix, chunk (T.pack txt) & fore red]
     B.hPutStrLn stderr msg
 {-# INLINE warnS #-}
 
 -- | Get current time.
-getTime :: IO String
-getTime = formatTime defaultTimeLocale "[%m-%d %H:%M]" <$> getZonedTime
+getTime :: IO T.Text
+getTime = T.pack . formatTime defaultTimeLocale "[%m-%d %H:%M]" <$> getZonedTime
 {-# INLINE getTime #-}
 
 -- | Construct node id given server address and port.

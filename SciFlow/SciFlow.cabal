@@ -49,11 +49,11 @@ library
     , memory
     , monad-control
     , network-transport == 0.5.*
-    , rainbow
+    , rainbow >= 0.34.2.0
     , stm
     , sqlite-simple
     , text
-    , template-haskell
+    , template-haskell >= 2.16.0.0
     , time
     , th-lift-instances
     , unordered-containers

@@ -3,7 +3,6 @@
 module Control.Workflow.Language.TH.Internal (link) where
 
 import Control.Arrow
-import Data.List (foldr1)
 import           Language.Haskell.TH
 
 link :: [String]  -- a list of parents
@@ -54,7 +53,7 @@ linkAN as f = [| $arr1 >>> arr $arr2 >>> $f |]
     arr1 = return $ foldr1 g $ map VarE as
       where
         g x1 x2 = AppE (AppE (VarE '(&&&)) x1) x2
-    arr2 = return $ LamE [tuple1] $ TupE $ map VarE vars
+    arr2 = return $ LamE [tuple1] $ TupE $ map (Just . VarE) vars
       where
         tuple1 = go $ map VarP vars
           where

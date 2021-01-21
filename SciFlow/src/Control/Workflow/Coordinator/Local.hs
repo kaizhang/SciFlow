@@ -7,7 +7,6 @@ module Control.Workflow.Coordinator.Local
     , Local
     ) where
 
-import           Control.Monad.IO.Class                      (liftIO)
 import Control.Distributed.Process
 import Control.Concurrent.STM
 import Control.Concurrent (threadDelay)
