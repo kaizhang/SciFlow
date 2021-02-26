@@ -43,10 +43,10 @@ instance IsCommand Show' where
     
 printCache :: M.HashMap Key T.Text -> IO ()
 printCache cache = forM_ records $ \(k, x) -> do
-    T.putStrLn $ "<< " <> k  <> " >>"
+    T.putStrLn $ "<< " <> k <> " >>"
     T.putStrLn $ x <> "\n"
   where
-    records = sortBy (comparing fst) $ map (\(a,b) -> (T.pack $ show a, b)) $
+    records = sortBy (comparing fst) $ map (\(a,b) -> (T.pack $ showKey a, b)) $
         M.toList cache
 
 show' :: Parser Command

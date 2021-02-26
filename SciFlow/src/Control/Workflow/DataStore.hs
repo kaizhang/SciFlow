@@ -5,6 +5,7 @@
 module Control.Workflow.DataStore
     ( DataStore(..)
     , Key(..)
+    , showKey
     , mkKey
     , JobStatus(..)
     , openStore
@@ -16,7 +17,7 @@ module Control.Workflow.DataStore
     , queryStatus
     , queryStatusPending
     , saveItem
-    , delItem
+    , delItemByID
     , delItems
     ) where
 
@@ -46,6 +47,9 @@ data InternalStore = InternalStore
 
 -- | A key is uniquely determined by the input hash and the name of the job.
 data Key = Key { _hash :: B.ByteString, _name :: T.Text }
+
+showKey :: Key -> String
+showKey (Key h jn) = T.unpack jn <> "(" <> B.unpack h <> ")"
 
 instance Eq Key where
     a == b = _hash a == _hash b
@@ -172,11 +176,14 @@ fetchItems (DataStore store) jn = liftIO $ withMVar store $
         query db "SELECT data FROM item_db WHERE jobname=?" [jn] 
 {-# INLINE fetchItems #-}
 
--- | Delete a record based on the key.
-delItem :: MonadIO m => DataStore -> Key -> m ()
-delItem (DataStore store) (Key k _) = liftIO $ withMVar store $
+-- | Delete a record based on the fingerprint.
+delItemByID :: MonadIO m
+            => DataStore
+            -> B.ByteString
+            -> m ()
+delItemByID (DataStore store) k = liftIO $ withMVar store $
     \(InternalStore db _) -> execute db "DELETE FROM item_db WHERE hash= ?" [k]
-{-# INLINE delItem #-}
+{-# INLINE delItemByID #-}
 
 -- | Delete all records with the given job name.
 delItems :: MonadIO m
