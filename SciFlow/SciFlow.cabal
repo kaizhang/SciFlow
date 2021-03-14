@@ -21,6 +21,7 @@ library
     Control.Workflow
     Control.Workflow.Language
     Control.Workflow.Language.TH
+    Control.Workflow.Language.TH.Internal
     Control.Workflow.Interpreter.Exec
     Control.Workflow.Interpreter.FunctionTable
     Control.Workflow.Interpreter.Graph
@@ -32,9 +33,6 @@ library
     Control.Arrow.Free
     Control.Arrow.Async
 
-  other-modules:
-    Control.Workflow.Language.TH.Internal
-
   build-depends:
       base >= 4.7 && < 5.0
     , bytestring
@@ -42,6 +40,7 @@ library
     , constraints
     , cryptohash-sha256
     , distributed-process == 0.7.*
+    , fgl
     , exceptions
     , hashable
     , lifted-async

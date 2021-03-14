@@ -2,16 +2,18 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Control.Workflow.Language.TH (build) where
 
 import Control.Arrow.Free (mapA, effect)
-import Control.Arrow (arr)
+import Control.Arrow (arr, (>>>))
 import qualified Data.Text as T
 import           Language.Haskell.TH
 import Instances.TH.Lift ()
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
+import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Lazy (StateT, get, put, lift, execStateT, execState)
 
 import Control.Workflow.Language
@@ -26,7 +28,7 @@ build :: String   -- ^ The name of the compiled workflow.
       -> Q [Dec]
 build name sig builder = compile name sig wf
   where
-    wf = execState builder $ Workflow M.empty M.empty
+    wf = addSource $ execState builder $ Workflow M.empty M.empty
 {-# INLINE build #-}
 
 -- Generate codes from a DAG. This function will create functions defined in
@@ -47,14 +49,8 @@ compile name sig wf = do
     tableName = mkName $ name ++ "__Table"
     wfName = mkName $ name ++ "__Flow"
     defFlow nm = do
-        -- step function definitions
-        res <- mapM (mkDefs wf) $ getSinks wf
-        let funDecs = M.elems $ M.fromList $ concatMap snd res
-
-        -- main definition
-        main <- link (map fst res) [| arr $ const () |]
-
-        return [ValD (VarP nm) (NormalB main) funDecs]
+        main <- compileWorkflow wf
+        return [ValD (VarP nm) (NormalB main) []]
 {-# INLINE compile #-}
 
 type FunDef = (String, Dec)
@@ -110,3 +106,73 @@ mkJob nid Node{..}
         } |]
 mkJob _ (UNode fun) = [| ustep $fun |]
 {-# INLINE mkJob #-}
+
+
+compileWorkflow :: Workflow -> ExpQ
+compileWorkflow wf = 
+    let (functions, _, nOutput) = foldl processNode ([], M.empty, 0) $
+            flip map (G.topsort' gr) $ \(nid, nd) -> (nid, mkJob nid nd) 
+        sink = [| arr $ const () |]
+     in linkFunctions $ reverse $ sink : functions
+  where
+    nodeToParents :: M.HashMap T.Text ([T.Text], Maybe Int)
+    nodeToParents = M.fromList $ flip map nodes $ \(_, (x, _)) ->
+        let i = M.lookupDefault undefined x nodeToId
+            degree = case G.outdeg gr i of
+                0 -> Nothing
+                d -> Just d
+         in (x, (M.lookupDefault [] x $ _parents wf, degree))
+    processNode (acc, nodeToPos, nVar) (nid, f) = case M.lookupDefault (error "Impossible") nid nodeToParents of
+        ([], Nothing) -> error "singleton"
+        ([], Just nChildren) ->
+            let nOutput = nChildren
+                oIdx = [0 .. nOutput - 1]
+                nodeToPos' = M.insert nid oIdx nodeToPos
+                fun = [| $f >>> $(replicateOutput 1 nChildren) |]
+            in (fun:acc, nodeToPos', nOutput)
+        (parents, Nothing) -> 
+            let pos = map (\x -> head $ M.lookupDefault (error $ "Node not found" <> show x <> "for" <> show nid) x nodeToPos) parents
+                nOutput = nVar - length pos + 1
+                nodeToPos' = M.insert nid [0] $ fmap (map (+1)) $
+                    M.mapMaybe (adjustIdx pos) nodeToPos
+                fun = selectInput nVar pos f
+            in (fun:acc, nodeToPos', nOutput)
+        (parents, Just nChildren ) -> 
+            let pos = map (\x -> head $ M.lookupDefault (error $ "Node not found" <> show x <> "for" <> show nid) x nodeToPos) parents
+                nOutput = nVar - length pos + nChildren
+                nodeToPos' = M.insert nid [0..nChildren-1] $ fmap (map (+nChildren)) $
+                    M.mapMaybe (adjustIdx pos) nodeToPos
+                fun = [| $(selectInput nVar pos f) >>> $(replicateOutput (nVar - length pos + 1) nChildren) |]
+            in (fun:acc, nodeToPos', nOutput)
+    gr = let edges = flip concatMap (M.toList $ _parents wf) $ \(x, ps) ->
+                let x' = M.lookupDefault (error $ show x) x nodeToId
+                in flip map ps $ \p -> (M.lookupDefault (error $ show p) p nodeToId, x', ())
+          in G.mkGraph nodes edges :: G.Gr (T.Text, Node) ()
+    nodes = zip [0..] $ M.toList $ _nodes wf
+    nodeToId = M.fromList $ map (\(i, (x, _)) -> (x, i)) nodes
+{-# INLINE compileWorkflow #-}
+
+addSource :: Workflow -> Workflow
+addSource wf = execState builder wf
+  where
+    builder = do
+        uNode name [| \() -> return () |] 
+        mapM_ (\x -> [name] ~> x) sources
+    sources = filter (\x -> not $ x `M.member` _parents wf) $ M.keys $ _nodes wf
+    name = "SciFlow_Source_Node_2xdj23"
+{-# INLINE addSource #-}
+
+adjustIdx :: [Int]  -- ^ positions removed
+          -> [Int]    -- ^ Old position in the list
+          -> Maybe [Int]    -- ^ new position in the list
+adjustIdx pos old = case filter (>=0) (map f old) of
+    [] -> Nothing
+    x -> Just x
+  where
+    f x = go 0 pos
+      where
+        go !acc (p:ps) | x == p = -1 
+                       | p < x = go (acc+1) ps
+                       | otherwise = go acc ps
+        go !acc _ = x - acc
+{-# INLINE adjustIdx #-}

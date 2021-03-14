@@ -16,5 +16,4 @@ extra-deps:
 
 allow-newer: true
 
-resolver: nightly-2021-01-20
-#resolver: lts-15.0
+resolver: lts-17.5

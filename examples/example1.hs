@@ -43,6 +43,10 @@ build "wf" [t| SciFlow Int |] $ do
     node "S6" 's6 $ return ()
     ["S2", "S3", "S4", "S5"] ~> "S6"
 
+    node "S7" 's0 $ return ()
+    nodePar "S8" 's1 $ return ()
+    ["S7"] ~> "S8"
+
 main :: IO ()
 main = do
     writeFile "workflow.html" $ renderGraph $ mkGraph wf
@@ -58,7 +62,8 @@ main = do
                 createTransport (defaultTCPAddr "localhost" $ show port) defaultTCPParameters >>= \case
                     Left ex -> print ex
                     Right transport -> withStore storePath $ \store -> 
-                        runSciFlow coord transport store (ResourceConfig M.empty) (Just ["S6"]) 2 wf
+                        --runSciFlow coord transport store (ResourceConfig M.empty) (Just ["S6"]) 2 wf
+                        runSciFlow coord transport store (ResourceConfig M.empty) Nothing 2 wf
         -- Using the Remote backend
         "remote" -> do
             config <- getDefaultRemoteConfig ["slave"]
