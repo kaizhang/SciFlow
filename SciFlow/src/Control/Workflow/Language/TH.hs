@@ -15,6 +15,7 @@ import qualified Data.HashMap.Strict as M
 import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Lazy (execState)
 import Data.Hashable (hash)
+import Data.Maybe (fromJust)
 
 import Control.Workflow.Language
 import Control.Workflow.Types
@@ -78,49 +79,6 @@ mkJob nid Node{..}
 mkJob _ (UNode fun) = [| ustep $fun |]
 {-# INLINE mkJob #-}
 
-compileWorkflow :: Workflow -> ExpQ
-compileWorkflow wf = 
-    let (functions, _, _) = foldl processNode ([], M.empty, 0) $
-            flip map (G.topsort' gr) $ \(nid, nd) -> (nid, mkJob nid nd) 
-        sink = [| arr $ const () |]
-     in linkFunctions $ reverse $ sink : functions
-  where
-    nodeToParents :: M.HashMap T.Text ([T.Text], Maybe Int)
-    nodeToParents = M.fromList $ flip map nodes $ \(_, (x, _)) ->
-        let i = M.lookupDefault undefined x nodeToId
-            degree = case G.outdeg gr i of
-                0 -> Nothing
-                d -> Just d
-         in (x, (M.lookupDefault [] x $ _parents wf, degree))
-    processNode (acc, nodeToPos, nVar) (nid, f) = case M.lookupDefault (error "Impossible") nid nodeToParents of
-        ([], Nothing) -> error "singleton"
-        ([], Just nChildren) ->
-            let nOutput = nChildren
-                oIdx = [0 .. nOutput - 1]
-                nodeToPos' = M.insert nid oIdx nodeToPos
-                fun = [| $f >>> $(replicateOutput 1 nChildren) |]
-            in (fun:acc, nodeToPos', nOutput)
-        (parents, Nothing) -> 
-            let pos = map (\x -> head $ M.lookupDefault (error $ "Node not found" <> show x <> "for" <> show nid) x nodeToPos) parents
-                nOutput = nVar - length pos + 1
-                nodeToPos' = M.insert nid [0] $ fmap (map (+1)) $
-                    M.mapMaybe (adjustIdx pos) nodeToPos
-                fun = selectInput nVar pos f
-            in (fun:acc, nodeToPos', nOutput)
-        (parents, Just nChildren ) -> 
-            let pos = map (\x -> head $ M.lookupDefault (error $ "Node not found" <> show x <> "for" <> show nid) x nodeToPos) parents
-                nOutput = nVar - length pos + nChildren
-                nodeToPos' = M.insert nid [0..nChildren-1] $ fmap (map (+nChildren)) $
-                    M.mapMaybe (adjustIdx pos) nodeToPos
-                fun = [| $(selectInput nVar pos f) >>> $(replicateOutput (nVar - length pos + 1) nChildren) |]
-            in (fun:acc, nodeToPos', nOutput)
-    gr = let edges = flip concatMap (M.toList $ _parents wf) $ \(x, ps) ->
-                let x' = M.lookupDefault (error $ show x) x nodeToId
-                in flip map ps $ \p -> (M.lookupDefault (error $ show p) p nodeToId, x', ())
-          in G.mkGraph nodes edges :: G.Gr (T.Text, Node) ()
-    nodes = zip [0..] $ M.toList $ _nodes wf
-    nodeToId = M.fromList $ map (\(i, (x, _)) -> (x, i)) nodes
-{-# INLINE compileWorkflow #-}
 
 addSource :: Workflow -> Workflow
 addSource wf = execState builder wf
@@ -146,3 +104,76 @@ adjustIdx pos old = case filter (>=0) (map f old) of
                        | otherwise = go acc ps
         go !acc _ = x - acc
 {-# INLINE adjustIdx #-}
+
+
+compileWorkflow :: Workflow -> ExpQ
+compileWorkflow wf = 
+    let (functions, _, _) = foldl processNodeGroup ([], M.empty, 0) $ groupSortNodes wf
+        sink = [| arr $ const () |]
+     in linkFunctions $ reverse $ sink : functions
+  where
+    nodeToParents :: M.HashMap T.Text ([T.Text], Int)
+    nodeToParents = M.fromList $ flip map nodes $ \(_, (x, _)) ->
+        let i = M.lookupDefault undefined x nodeToId
+            degree = case G.outdeg gr i of
+                0 -> 1
+                d -> d
+         in (x, (M.lookupDefault [] x $ _parents wf, degree))
+    processNodeGroup (acc, nodeToPos, nVar) nodes =
+        case (map (\x -> M.lookupDefault (error "Impossible") (fst x) nodeToParents) nodes) of
+            -- source node
+            [([], n)] ->
+                let oIdx = [0 .. n - 1]
+                    (nid, f) = head nodes
+                    nodeToPos' = M.insert nid oIdx nodeToPos
+                    fun = [| $f >>> $(replicateOutput 1 n) |]
+                in (fun:acc, nodeToPos', n)
+            parents -> 
+                let inputPos =
+                        let computeIdx count (x:xs) = let (x', count') = go ([], count) x in x' : computeIdx count' xs
+                              where
+                                go (acc, m) (y:ys) = case M.lookup y m of
+                                    Nothing -> go (acc ++ [(y, 0)], M.insert y 1 m) ys
+                                    Just c -> go (acc ++ [(y, c)], M.insert y (c+1) m) ys
+                                go acc _ = acc
+                            computeIdx _ _ = []
+                        in flip map (computeIdx M.empty $ map fst parents) $ \ps ->
+                                flip map ps $ \(p, i) -> M.lookupDefault (error $ "Node not found" <> show p) p nodeToPos !! i
+                    nInput = map length inputPos
+                    nOutput = map snd parents
+                    nodeToPos' =
+                        let outputPos = let i = scanl1 (+) nOutput
+                                         in zipWith (\a b -> [a .. b-1]) (0:i) i
+                            m = fmap (map (+(sum nOutput))) $ 
+                                M.mapMaybe (adjustIdx $ concat inputPos) nodeToPos
+                         in foldl (\x (k, v) -> M.insert k v x) m $ zip (map fst nodes) outputPos
+                    fun =
+                        let combinedF = combineArrows $
+                                flip map (zip3 nodes nInput nOutput) $ \((_, f), ni, no) ->
+                                (ni, [| $f >>> $(replicateOutput 1 no) |], no)
+                        in selectInput nVar (sum nOutput) (concat inputPos) combinedF
+                    nVar' = nVar - (sum nInput) + (sum nOutput)
+                in (fun:acc, nodeToPos', nVar')
+    gr = let edges = flip concatMap (M.toList $ _parents wf) $ \(x, ps) ->
+                let x' = M.lookupDefault (error $ show x) x nodeToId
+                in flip map ps $ \p -> (M.lookupDefault (error $ show p) p nodeToId, x', ())
+          in G.mkGraph nodes edges :: G.Gr (T.Text, Node) ()
+    nodes = zip [0..] $ M.toList $ _nodes wf
+    nodeToId = M.fromList $ map (\(i, (x, _)) -> (x, i)) nodes
+{-# INLINE compileWorkflow #-}
+
+groupSortNodes :: Workflow -> [[(T.Text, ExpQ)]]
+groupSortNodes wf = go [] sortedNodes
+  where
+    go acc [] = [acc]
+    go [] (x:xs) = go [x] xs
+    go acc (x:xs) | any (x `isChildOf`) acc = acc : go [x] xs
+                  | otherwise = go (acc <> [x]) xs
+    isChildOf x y = gr `G.hasEdge` (hash $ fst y, hash $ fst x)
+    gr = let edges = flip concatMap (M.toList $ _parents wf) $ \(x, ps) ->
+                flip map ps $ \p -> (hash p, hash x, ())
+          in G.mkGraph nodes edges :: G.Gr (T.Text, ExpQ) ()
+    nodes = map (\(k, x) -> (hash k, (k, mkJob k x))) $ M.toList $ _nodes wf
+    sortedNodes = let [root] = filter (\x -> G.indeg gr x == 0) $ G.nodes gr
+                   in map (fromJust . G.lab gr) $ G.bfs root gr
+{-# INLINE groupSortNodes #-}

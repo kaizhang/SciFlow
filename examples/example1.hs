@@ -80,3 +80,5 @@ main = do
         -- DRMAA workers
         "slave" -> startClient (Proxy :: Proxy Remote)
             (mkNodeId serverAddr port) $ _function_table wf
+
+

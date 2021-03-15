@@ -79,7 +79,8 @@ execFlow localNode coord store selection sciflow = eval (AsyncA . runFlow') $ _f
         Nothing -> run
         Just s -> if _job_name job `S.member` s
             then run
-            else const $ throwError EarlyStopped
+            --else const $ throwError EarlyStopped
+            else const $ return undefined
       where
         run = runJob localNode coord store (_function_table sciflow) job
     runFlow' (UStep fun) = \i -> handleAll cleanUp $ lift $ lift $ fun i
