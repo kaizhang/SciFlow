@@ -8,12 +8,14 @@ import System.Environment
 import qualified Data.HashMap.Strict as M
 import Network.Transport.TCP
 import Data.Proxy (Proxy(..))
+import Data.Maybe
 
 import Control.Workflow
 import Control.Workflow.Coordinator.Local
 import Control.Workflow.Coordinator.Remote
 import Control.Workflow.Main.Command.View
-import Control.Workflow.Interpreter.Graph
+import qualified Data.Graph.Inductive as G
+import Control.Workflow.Types
 
 s0 :: () -> ReaderT Int IO [Int]
 s0 = return . const [1..10]
@@ -49,7 +51,9 @@ build "wf" [t| SciFlow Int |] $ do
 
 main :: IO ()
 main = do
-    writeFile "workflow.html" $ renderGraph $ mkGraph wf
+    --writeFile "workflow.html" $ renderGraph $ mkGraph wf
+    let gr = _graph wf
+    mapM_ print $ map (\(i, j) -> (fmap _label $ fromJust $ G.lab gr i, fmap _label $ fromJust $ G.lab gr j)) $ G.edges gr
     let serverAddr = "192.168.0.1"
         port = 23488
         storePath = "sciflow.db"

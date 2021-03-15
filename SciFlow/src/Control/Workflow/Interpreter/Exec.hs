@@ -49,8 +49,7 @@ runSciFlow coord transport store resource selection env sciflow = do
     pidInit <- forkProcess nd $ initiate coord
     runProcess nd $ do
         let fun = execFlow nd coord store
-                (fmap (getDependencies (_graph sciflow)) selection)
-                sciflow
+                (fmap (getDependencies (_graph sciflow)) selection) sciflow
         res <- liftIO $ flip runReaderT env $ flip runReaderT resource $
             runExceptT $ runAsyncA fun ()
         case res of
