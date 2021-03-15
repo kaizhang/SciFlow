@@ -24,7 +24,6 @@ library
     Control.Workflow.Language.TH.Internal
     Control.Workflow.Interpreter.Exec
     Control.Workflow.Interpreter.FunctionTable
-    Control.Workflow.Interpreter.Graph
     Control.Workflow.Coordinator
     Control.Workflow.Coordinator.Local
     Control.Workflow.DataStore

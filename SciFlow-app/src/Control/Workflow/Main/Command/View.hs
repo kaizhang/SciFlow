@@ -4,12 +4,10 @@
 
 module Control.Workflow.Main.Command.View
     ( view
-    , renderGraph
     ) where
 
 import Data.Aeson (Value, toJSON)
 import Text.RawString.QQ (r)
-import Control.Workflow.Interpreter.Graph
 import qualified Data.HashMap.Strict as M
 import           Options.Applicative
 import Data.List (isSuffixOf)
@@ -21,10 +19,12 @@ import Control.Workflow.Main.Types
 newtype View = View FilePath
 
 instance IsCommand View where
-    runCommand (View output) = writeFile output' . renderGraph . mkGraph
+    runCommand (View output) = undefined --writeFile output' . renderGraph . mkGraph
+    {-
       where
         output' | ".html" `isSuffixOf` output = output
                 | otherwise = output <> ".html"
+                -}
 
 view :: Parser Command
 view = fmap Command $ View
@@ -32,6 +32,7 @@ view = fmap Command $ View
         ( metavar "workflow.html"
        <> help "File name of the HTML output" ) 
 
+{-
 -------------------------------------------------------------------------------
 -- Graph
 -------------------------------------------------------------------------------
@@ -127,3 +128,4 @@ mkNodes (Graph ns _) = toJSON $ M.fromList $ flip map ns $
 
 mkEdges :: Graph -> Value
 mkEdges (Graph _ es) = toJSON $ flip map es $ \Edge{..} -> (_from, _to)
+-}

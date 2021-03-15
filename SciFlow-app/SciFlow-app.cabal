@@ -33,6 +33,8 @@ library
     , aeson
     , binary
     , bytestring
+    , fgl
+    , hashable
     , hostname
     , mtl
     , raw-strings-qq

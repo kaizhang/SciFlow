@@ -19,8 +19,11 @@ import Control.Distributed.Process.Node (forkProcess, runProcess, newLocalNode, 
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
 import Network.Transport (Transport)
+import qualified Data.Graph.Inductive as G
 import Data.Binary (Binary(..), encode, decode)
 import Control.Concurrent.MVar
+import Data.Maybe
+import Data.Hashable (hash)
 import qualified Data.Text as T
 import Data.List (foldl')
 
@@ -28,7 +31,6 @@ import Control.Workflow.Types
 import Control.Workflow.Utils
 import Control.Workflow.Coordinator
 import Control.Workflow.DataStore
-import Control.Workflow.Interpreter.Graph
 
 runSciFlow :: (Coordinator coordinator, Binary env)
            => coordinator       -- ^ Coordinator backend
@@ -47,7 +49,7 @@ runSciFlow coord transport store resource selection env sciflow = do
     pidInit <- forkProcess nd $ initiate coord
     runProcess nd $ do
         let fun = execFlow nd coord store
-                (fmap (getDependencies (mkGraph sciflow)) selection)
+                (fmap (getDependencies (_graph sciflow)) selection)
                 sciflow
         res <- liftIO $ flip runReaderT env $ flip runReaderT resource $
             runExceptT $ runAsyncA fun ()
@@ -88,14 +90,14 @@ execFlow localNode coord store selection sciflow = eval (AsyncA . runFlow') $ _f
             throwError Errored
 {-# INLINE execFlow #-}
 
-getDependencies :: Graph -> [T.Text] -> S.HashSet T.Text
-getDependencies gr ids = go S.empty ids
+getDependencies :: G.Gr (Maybe NodeLabel) () -> [T.Text] -> S.HashSet T.Text
+getDependencies gr ids = S.map fromJust $ S.filter isJust $ S.map f $ go S.empty $ map hash ids
   where
+    f i = fmap _label $ fromJust $ G.lab gr i
     go acc [] = acc 
     go acc xs = go (foldl' (flip S.insert) acc xs) parents
       where
-        parents = flip concatMap xs $ \i -> M.lookupDefault [] i gr'
-    gr' = M.fromListWith (++) $ map (\e -> (_to e, [_from e])) $ _edges gr
+        parents = concatMap (G.pre gr) xs
 {-# INLINE getDependencies #-}
 
 runJob :: (Coordinator coordinator, Binary env)
