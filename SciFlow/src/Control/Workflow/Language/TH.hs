@@ -14,6 +14,7 @@ import Instances.TH.Lift ()
 import qualified Data.HashMap.Strict as M
 import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Lazy (execState)
+import Data.Hashable (hash)
 
 import Control.Workflow.Language
 import Control.Workflow.Types
@@ -42,9 +43,15 @@ compile name sig wf = do
     d2 <- mkFunTable (name ++ "__Table") (name ++ "__Flow")
     -- the function signature
     wf_signature <- (mkName name) `sigD` sig
-    d3 <- [d| $(varP $ mkName name) = SciFlow $(varE wfName) $(varE tableName) |]
+    d3 <- [d| $(varP $ mkName name) = SciFlow $(varE wfName) $(varE tableName) $ G.mkGraph nodes edges |]
     return $ d1 ++ d2 ++ (wf_signature:d3)
   where
+    nodes =
+        let mkNodeLabel _ (UNode _) = Nothing
+            mkNodeLabel k Node{..} = Just $ NodeLabel k _node_doc _node_parallel
+         in flip map (M.toList $ _nodes wf) $ \(k, nd) -> (hash k, mkNodeLabel k nd)
+    edges = flip concatMap (M.toList $ _parents wf) $ \(x, ps) ->
+        flip map ps $ \p -> (hash p, hash x, ())
     tableName = mkName $ name ++ "__Table"
     wfName = mkName $ name ++ "__Flow"
     defFlow nm = do

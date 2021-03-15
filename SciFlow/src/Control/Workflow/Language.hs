@@ -42,7 +42,6 @@ data Node = Node
     , _node_doc :: T.Text     -- ^ Documentation
     }
     | UNode ExpQ
-    
 
 data NodeAttributes = NodeAttributes
     { _doc :: T.Text   -- ^ documentation

@@ -20,7 +20,6 @@ import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
 import Network.Transport (Transport)
 import Data.Binary (Binary(..), encode, decode)
-import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar
 import qualified Data.Text as T
 import Data.List (foldl')
@@ -111,14 +110,12 @@ runJob localNode coord store rf Job{..} = runAsyncA $ eval ( \(Action _) ->
         let chash = mkKey i _job_name
             cleanUp (SomeException ex) = do
                 errorS $ show chash <> " Failed: " <> show ex
-                setStatus store chash $ Failed $ show ex
                 throwError Errored
             input | _job_parallel = encode [i]
                   | otherwise = encode i
             decode' x | _job_parallel = let [r] = decode x in r
                       | otherwise = decode x
-            go = queryStatusPending store chash >>= \case
-                Pending -> liftIO (threadDelay 100000) >> go
+            go = queryStatus store chash >>= \case
                 Failed _ -> throwError Errored
                 Complete dat -> return $ decode dat
                 Missing -> handleAll cleanUp $ do
@@ -145,7 +142,6 @@ runJob localNode coord store rf Job{..} = runAsyncA $ eval ( \(Action _) ->
                             let res = decode' r
                             saveItem store chash res
                             infoS $ show chash <> ": Complete!"
-                            setStatus store chash $ Complete $ encode res
                             return res
         go
     ) _job_action

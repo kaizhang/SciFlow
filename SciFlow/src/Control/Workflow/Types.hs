@@ -5,6 +5,7 @@
 {-# LANGUAGE GADTs #-}
 module Control.Workflow.Types
     ( SciFlow(..)
+    , NodeLabel(..)
     , FunctionTable(..)
     , ResourceConfig(..)
     , Resource(..)
@@ -22,6 +23,7 @@ import GHC.Generics (Generic)
 import qualified Data.Text as T
 import Data.Typeable (Typeable)
 import Control.Arrow.Free (Free, Choice, effect)
+import qualified Data.Graph.Inductive as G
 import qualified Data.ByteString.Lazy as B
 import qualified Data.HashMap.Strict as M
 import Control.Distributed.Process.Serializable (SerializableDict)
@@ -32,7 +34,14 @@ import Language.Haskell.TH.Syntax (Lift)
 -- a function table for remote execution.
 data SciFlow env = SciFlow
     { _flow :: Free (Flow env) () ()
-    , _function_table :: FunctionTable }
+    , _function_table :: FunctionTable
+    , _graph :: G.Gr (Maybe NodeLabel) ()}
+
+data NodeLabel = NodeLabel
+    { _label :: T.Text
+    , _descr :: T.Text
+    , _parallel :: Bool
+    } deriving (Show, Generic, Lift)
 
 -- | The function table that can be sent to remote.
 data FunctionTable = FunctionTable
