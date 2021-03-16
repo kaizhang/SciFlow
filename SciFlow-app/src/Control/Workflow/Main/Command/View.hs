@@ -4,27 +4,28 @@
 
 module Control.Workflow.Main.Command.View
     ( view
+    , renderGraph
     ) where
 
 import Data.Aeson (Value, toJSON)
-import Text.RawString.QQ (r)
 import qualified Data.HashMap.Strict as M
 import           Options.Applicative
 import Data.List (isSuffixOf)
 import Language.Javascript.JMacro
 import qualified Data.Text as T
+import qualified Data.Graph.Inductive as G
+import Data.Maybe
 
 import Control.Workflow.Main.Types
+import Control.Workflow.Types
 
 newtype View = View FilePath
 
 instance IsCommand View where
-    runCommand (View output) = undefined --writeFile output' . renderGraph . mkGraph
-    {-
+    runCommand (View output) = writeFile output' . renderGraph . _graph
       where
         output' | ".html" `isSuffixOf` output = output
                 | otherwise = output <> ".html"
-                -}
 
 view :: Parser Command
 view = fmap Command $ View
@@ -32,100 +33,63 @@ view = fmap Command $ View
         ( metavar "workflow.html"
        <> help "File name of the HTML output" ) 
 
-{-
+mkNodes :: G.Gr (Maybe NodeLabel) () -> [JExpr]
+mkNodes gr = flip map (G.labNodes gr) $ \(i, nd) -> case nd of
+    Just NodeLabel{..} ->
+        [jmacroE| {
+            name: `_label`
+        }|]
+    Nothing -> 
+        [jmacroE| {
+            name: `show i`,
+            label: { show: false}
+        }|]
+
+mkEdges :: G.Gr (Maybe NodeLabel) () -> Value
+mkEdges gr = toJSON $ flip map (G.edges gr) $ \(fr, to) -> 
+    let fr' = maybe (T.pack $ show fr) _label $ fromJust $ G.lab gr fr
+        to' = maybe (T.pack $ show to) _label $ fromJust $ G.lab gr to
+    in M.fromList [ ("source" :: T.Text, fr'), ("target" :: T.Text, to') ]
+
+--simplyGraph :: G.Gr (Maybe NodeLabel) () -> G.Gr (Maybe NodeLabel) () -> 
+--simplyGraph
+
 -------------------------------------------------------------------------------
 -- Graph
 -------------------------------------------------------------------------------
 
 -- | Create HTML rendering for the graph.
-renderGraph :: Graph -> String
-renderGraph gr = html <> runDagre gr <> "</script></html>"
+renderGraph :: G.Gr (Maybe NodeLabel) () -> String
+renderGraph gr = html
   where
-    html = [r|
-        <html>
-            <head>
-            <style>
-                html {padding:0px;margin:0px;}
-                body {
-                    font: 300 14px Helvetica;
-                    padding:0px;margin:0px;
-                }
-                svg {
-                    height: 100%;
-                    width: 100%;
-                }
-                .node ellipse,
-                .node polygon,
-                .node rect {
-                    stroke: #333;
-                    fill: #fff;
-                }
-                .edgePath path {
-                    stroke: #333;
-                    fill: #333;
-                    stroke-width: 1.5px;
-                }
-                .node text {
-                    pointer-events: none;
-                }
-                .tipsy .description {
-                    font-size: 1.2em;
-                }
-            </style>
-            <script src="https://cdn.jsdelivr.net/npm/d3@5.12.0/dist/d3.min.js"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/dagre-d3@0.6.4/dist/dagre-d3.min.js"></script>
+    html = unlines
+        [ "<html><head>"
+        , "<script src=\"https://cdn.jsdelivr.net/npm/echarts@5.0.2/dist/echarts.min.js\"></script>"
+        , "<script src=\"https://cdn.jsdelivr.net/npm/echarts-gl@2.0.2/dist/echarts-gl.min.js\"></script>"
+        , "<script src=\"https://cdn.jsdelivr.net/npm/echarts-dagre@0.1.0/dist/echarts-dagre.min.js\"></script>"
+        , "</head><body>"
+        , "<div id=\"main\" style=\"width:900px; height:900px;\"></div>"
+        , "<script type=\"text/javascript\">"
+        , runDagre gr
+        , "</script></body></html>" ]
 
-            <link rel="stylesheet" href="https://dagrejs.github.io/project/dagre-d3/latest/demo/tipsy.css">
-            <script src="https://code.jquery.com/jquery-1.9.1.min.js"></script>
-            <script src="https://dagrejs.github.io/project/dagre-d3/latest/demo/tipsy.js"></script>
-            </head>
-            <body><svg></svg></body><script>
-        |]
-
-
-runDagre :: Graph -> String
+runDagre :: G.Gr (Maybe NodeLabel) () -> String
 runDagre gr = show $ renderJs [jmacro|
-    var g = new dagreD3.graphlib.Graph().setGraph({});
-    var nodes = `mkNodes gr`;
-    var edges = `mkEdges gr`;
-
-    Object.keys(nodes).forEach(function(label) {
-        var val = nodes[label];
-        val.label = label;
-        val.rx = 5;
-        val.ry = 5;
-        g.setNode(label, val);
-    });
-
-    edges.forEach(function(edge) {
-        g.setEdge(edge[0], edge[1], {});
-    });
-
-    var render = new dagreD3.render();
-    var svg = d3.select("svg"), inner = svg.append("g");
-    var zoom = d3.zoom().on("zoom", function() {
-        inner.attr("transform", d3.event.transform);
-    });
-    svg.call(zoom);
-    var styleTooltip = function(description) {
-        return "<p class='description'>" + description + "</p>";
+    var myChart = echarts.init(document.getElementById('main'));
+    var option = {
+        series: [{
+            type: 'graph',
+            roam: true,
+            label: {show: true},
+            edgeSymbol: ['circle', 'arrow'],
+            layout: 'dagre',
+            nodes: `mkNodes gr`,
+            links: `mkEdges gr`,
+            emphasis: {
+                focus: 'adjacency',
+                lineStyle: {width: 10}
+            }
+        }]
     };
-    render(inner, g);
-    inner.selectAll("g.node").attr("title", function(v) { return styleTooltip(g.node(v).description) }).each(function(v) { $(this).tipsy({ gravity: "w", opacity: 1, html: true }); });
-    //var initialScale = 0.75;
-    //svg.call(zoom.transform, d3.zoomIdentity.translate((svg.attr("width") - g.graph().width * initialScale) / 2, 20).scale(initialScale));
-    //svg.attr("height", g.graph().height * initialScale + 40);
+    myChart.setOption(option);
     |]
-
-mkNodes :: Graph -> Value
-mkNodes (Graph ns _) = toJSON $ M.fromList $ flip map ns $
-    \Node{..} ->
-        let attr = if _parallel
-                then [("description", _descr), ("shape", "rect")]
-                else [("description", _descr), ("shape", "diamond")]
-        in (_label, M.fromList (attr :: [(T.Text, T.Text)]))
-
-mkEdges :: Graph -> Value
-mkEdges (Graph _ es) = toJSON $ flip map es $ \Edge{..} -> (_from, _to)
--}

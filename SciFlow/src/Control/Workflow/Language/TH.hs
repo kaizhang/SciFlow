@@ -137,8 +137,14 @@ compileWorkflow wf =
                                     Just c -> go (acc ++ [(y, c)], M.insert y (c+1) m) ys
                                 go acc _ = acc
                             computeIdx _ _ = []
-                        in flip map (computeIdx M.empty $ map fst parents) $ \ps ->
-                                flip map ps $ \(p, i) -> M.lookupDefault (error $ "Node not found" <> show p) p nodeToPos !! i
+                            lookupP (p, i) = M.lookupDefault errMsg p nodeToPos !! i
+                              where
+                                errMsg = error $ unlines $
+                                    ("Node not found: " <> show p) :
+                                    show (map fst nodes) :
+                                    map show (M.toList nodeToPos)
+                                    --map show (M.toList nodeToParents)
+                        in map (map lookupP) $ computeIdx M.empty $ map fst parents
                     nInput = map length inputPos
                     nOutput = map snd parents
                     nodeToPos' =
@@ -163,7 +169,7 @@ compileWorkflow wf =
 {-# INLINE compileWorkflow #-}
 
 groupSortNodes :: Workflow -> [[(T.Text, ExpQ)]]
-groupSortNodes wf = go [] sortedNodes
+groupSortNodes wf = go [] $ G.topsort' gr
   where
     go acc [] = [acc]
     go [] (x:xs) = go [x] xs
@@ -174,6 +180,4 @@ groupSortNodes wf = go [] sortedNodes
                 flip map ps $ \p -> (hash p, hash x, ())
           in G.mkGraph nodes edges :: G.Gr (T.Text, ExpQ) ()
     nodes = map (\(k, x) -> (hash k, (k, mkJob k x))) $ M.toList $ _nodes wf
-    sortedNodes = let [root] = filter (\x -> G.indeg gr x == 0) $ G.nodes gr
-                   in map (fromJust . G.lab gr) $ G.bfs root gr
 {-# INLINE groupSortNodes #-}

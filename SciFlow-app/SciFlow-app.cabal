@@ -37,7 +37,6 @@ library
     , hashable
     , hostname
     , mtl
-    , raw-strings-qq
     , jmacro
     , optparse-applicative
     , unordered-containers

@@ -51,9 +51,7 @@ build "wf" [t| SciFlow Int |] $ do
 
 main :: IO ()
 main = do
-    --writeFile "workflow.html" $ renderGraph $ mkGraph wf
-    let gr = _graph wf
-    mapM_ print $ map (\(i, j) -> (fmap _label $ fromJust $ G.lab gr i, fmap _label $ fromJust $ G.lab gr j)) $ G.edges gr
+    writeFile "workflow.html" $ renderGraph $ _graph wf
     let serverAddr = "192.168.0.1"
         port = 23488
         storePath = "sciflow.db"
@@ -66,8 +64,8 @@ main = do
                 createTransport (defaultTCPAddr "localhost" $ show port) defaultTCPParameters >>= \case
                     Left ex -> print ex
                     Right transport -> withStore storePath $ \store -> 
-                        --runSciFlow coord transport store (ResourceConfig M.empty) (Just ["S6"]) 2 wf
-                        runSciFlow coord transport store (ResourceConfig M.empty) Nothing 2 wf
+                        runSciFlow coord transport store (ResourceConfig M.empty) (Just ["S6"]) 2 wf
+                        --runSciFlow coord transport store (ResourceConfig M.empty) Nothing 2 wf
         -- Using the Remote backend
         "remote" -> do
             config <- getDefaultRemoteConfig ["slave"]
