@@ -1,4 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
@@ -23,10 +25,15 @@ import qualified Data.Graph.Inductive as G
 import qualified Data.HashSet as S
 import Data.Maybe
 import Data.Hashable (hash)
+import Control.Exception (try, SomeException(..))
+import Control.Monad.Except (ExceptT, throwError, runExceptT)
+import Control.Monad.Catch (SomeException(..), handleAll, catchAll)
 
 import Control.Workflow.Main.Types
 import Control.Workflow.DataStore
 import Control.Workflow.Types
+
+import Debug.Trace
 
 data Show' = Show'
     { stepName :: Maybe T.Text
@@ -38,7 +45,8 @@ instance IsCommand Show' where
         Just env -> do
             cache <- newMVar M.empty
             let selection = fmap (getDependencies (_graph flow)) stepName
-            _ <- runExceptT $ runAsyncA (showFlow cache selection store env flow) ()
+                fun = showFlow cache selection store flow
+            _ <- liftIO $ flip runReaderT env $ runExceptT $ runAsyncA fun ()
             takeMVar cache >>= printCache . M.filterWithKey f
       where
         f k _ = case stepName of
@@ -63,38 +71,52 @@ show' = fmap Command $ Show'
        <> value "sciflow.db"
        <> metavar "DB_PATH" )
 
-showFlow :: Binary env
+type FlowMonad env = ExceptT RunStatus (Env env)
+data RunStatus = EarlyStopped | Errored
+
+showFlow :: forall env. Binary env
          => MVar (M.HashMap Key T.Text)
          -> Maybe (S.HashSet T.Text)
          -> DataStore
-         -> env
          -> SciFlow env
-         -> AsyncA (ExceptT () IO) () ()
-showFlow cache selection store env sciflow = eval (AsyncA . runFlow') $ _flow sciflow
+         -> AsyncA (FlowMonad env) () ()
+showFlow cache selection store sciflow = eval (AsyncA . runFlow') $ _flow sciflow
   where
-    runFlow' (Step job) = runAsyncA $ eval ( \(Action _) ->
-        AsyncA $ \ !i -> if maybe True (S.member (_job_name job)) selection
-            then do
+    runFlow' (Step job) = if maybe True (S.member (_job_name job)) selection
+        then runAsyncA $ eval (\(Action _) -> AsyncA $ \i ->
                 let key = mkKey i $ _job_name job
-                lift (queryStatus store key) >>= \case
-                    Complete dat -> do
-                        let res = decode dat
-                        lift $ modifyMVar_ cache $ \dict -> return $ if M.member key dict
-                            then dict
-                            else M.insert key (T.pack $ ppShow res) dict
-                        return res
-                    _ -> return undefined
-            else return undefined
-        ) $ _job_action job
-    runFlow' (UStep fun) = \i -> lift $ runReaderT (fun i) env
+                    f = queryStatus store key >>= \case
+                        Complete dat -> do
+                            let res = decode dat
+                            modifyMVar_ cache $ \dict -> return $ if M.member key dict
+                                then dict
+                                else M.insert key (T.pack $ ppShow res) dict
+                            return res
+                        _ -> return $ error $ show $ _job_name job
+                in liftIO $ try f >>= \case
+                    Left (SomeException _) -> return $ error $ show $ _job_name job
+                    Right x -> return x
+            ) $ _job_action job
+        else const $ return $ error $ show $ _job_name job
+    runFlow' (UStep jn fun) = case selection of
+        Nothing -> \i -> handleAll cleanUp $ lift $ fun i
+        Just s -> if jn `S.member` s
+            then \i -> handleAll cleanUp $ lift $ fun i
+            else const $ return $ error $ show jn
+      where
+        cleanUp (SomeException ex) = throwError Errored
+        {-
+    runFlow' (UStep jn fun) = \i -> liftIO $ try (runReaderT (fun i) env) >>= \case
+        Left (SomeException _) -> return $ error $ show jn
+        Right x -> return x
+        -}
 
-getDependencies :: G.Gr (Maybe NodeLabel) () -> T.Text -> S.HashSet T.Text
-getDependencies gr ids = S.map fromJust $ S.filter isJust $ S.map f $ go S.empty [hash ids]
+getDependencies :: G.Gr NodeLabel () -> T.Text -> S.HashSet T.Text
+getDependencies gr ids = S.map f $ go S.empty [hash ids]
   where
-    f i = fmap _label $ fromJust $ G.lab gr i
+    f i = _label $ fromJust $ G.lab gr i
     go acc [] = acc 
     go acc xs = go (foldl' (flip S.insert) acc xs) parents
       where
         parents = concatMap (G.pre gr) xs
 {-# INLINE getDependencies #-}
-

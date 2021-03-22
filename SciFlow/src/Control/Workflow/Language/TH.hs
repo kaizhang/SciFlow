@@ -48,8 +48,8 @@ compile name sig wf = do
     return $ d1 ++ d2 ++ (wf_signature:d3)
   where
     nodes =
-        let mkNodeLabel _ (UNode _) = Nothing
-            mkNodeLabel k Node{..} = Just $ NodeLabel k _node_doc _node_parallel
+        let mkNodeLabel k (UNode _) = NodeLabel k "" False True
+            mkNodeLabel k Node{..} = NodeLabel k _node_doc _node_parallel False
          in flip map (M.toList $ _nodes wf) $ \(k, nd) -> (hash k, mkNodeLabel k nd)
     edges = flip concatMap (M.toList $ _parents wf) $ \(x, ps) ->
         flip map ps $ \p -> (hash p, hash x, ())
@@ -76,7 +76,7 @@ mkJob nid Node{..}
         , _job_parallel = False
         , _job_action = effect $ Action $_node_function 
         } |]
-mkJob _ (UNode fun) = [| ustep $fun |]
+mkJob nid (UNode fun) = [| ustep nid $fun |]
 {-# INLINE mkJob #-}
 
 

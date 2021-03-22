@@ -33,6 +33,7 @@ library
     , aeson
     , binary
     , bytestring
+    , exceptions
     , fgl
     , hashable
     , hostname

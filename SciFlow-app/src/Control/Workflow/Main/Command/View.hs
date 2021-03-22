@@ -33,22 +33,16 @@ view = fmap Command $ View
         ( metavar "workflow.html"
        <> help "File name of the HTML output" ) 
 
-mkNodes :: G.Gr (Maybe NodeLabel) () -> [JExpr]
-mkNodes gr = flip map (G.labNodes gr) $ \(i, nd) -> case nd of
-    Just NodeLabel{..} ->
-        [jmacroE| {
-            name: `_label`
-        }|]
-    Nothing -> 
-        [jmacroE| {
-            name: `show i`,
-            label: { show: false}
-        }|]
+mkNodes :: G.Gr NodeLabel () -> [JExpr]
+mkNodes gr = flip map (G.labNodes gr) $ \(i, NodeLabel{..}) -> 
+    [jmacroE| {
+        name: `_label`
+    }|]
 
-mkEdges :: G.Gr (Maybe NodeLabel) () -> Value
+mkEdges :: G.Gr NodeLabel () -> Value
 mkEdges gr = toJSON $ flip map (G.edges gr) $ \(fr, to) -> 
-    let fr' = maybe (T.pack $ show fr) _label $ fromJust $ G.lab gr fr
-        to' = maybe (T.pack $ show to) _label $ fromJust $ G.lab gr to
+    let fr' = _label $ fromJust $ G.lab gr fr
+        to' = _label $ fromJust $ G.lab gr to
     in M.fromList [ ("source" :: T.Text, fr'), ("target" :: T.Text, to') ]
 
 --simplyGraph :: G.Gr (Maybe NodeLabel) () -> G.Gr (Maybe NodeLabel) () -> 
@@ -59,7 +53,7 @@ mkEdges gr = toJSON $ flip map (G.edges gr) $ \(fr, to) ->
 -------------------------------------------------------------------------------
 
 -- | Create HTML rendering for the graph.
-renderGraph :: G.Gr (Maybe NodeLabel) () -> String
+renderGraph :: G.Gr NodeLabel () -> String
 renderGraph gr = html
   where
     html = unlines
@@ -73,7 +67,7 @@ renderGraph gr = html
         , runDagre gr
         , "</script></body></html>" ]
 
-runDagre :: G.Gr (Maybe NodeLabel) () -> String
+runDagre :: G.Gr NodeLabel () -> String
 runDagre gr = show $ renderJs [jmacro|
     var myChart = echarts.init(document.getElementById('main'));
     var option = {

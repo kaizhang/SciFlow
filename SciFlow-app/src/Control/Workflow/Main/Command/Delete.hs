@@ -25,13 +25,13 @@ data Delete = Delete
 instance IsCommand Delete where
     runCommand Delete{..} flow = withStore dbPath $ \store -> if byId
         then mapM_ (delItemByID store) $ map (B.pack . T.unpack) input
-        else let nodes | delDepend = map _label $ findChildren input $ _graph flow
-                       | delSmart = map _label $ filter (not . _parallel) $ findChildren input $ _graph flow
+        else let nodes | delDepend = map _label $ filter (not . _uncached) $ findChildren input $ _graph flow
+                       | delSmart = map _label $ filter (\x -> not (_parallel x) && not (_uncached x)) $ findChildren input $ _graph flow
                        | otherwise = input
               in mapM_ (delItems store) nodes
 
-findChildren :: [T.Text] -> G.Gr (Maybe NodeLabel) () -> [NodeLabel]
-findChildren ids gr = mapMaybe f $ S.toList $ go S.empty $ map hash ids
+findChildren :: [T.Text] -> G.Gr NodeLabel () -> [NodeLabel]
+findChildren ids gr = map f $ S.toList $ go S.empty $ map hash ids
   where
     f i = fromJust $ G.lab gr i
     go acc [] = acc 

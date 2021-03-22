@@ -74,9 +74,3 @@ tupP' xs = TupP $ map VarP xs
 tupE' :: [Name] -> Exp
 tupE' [x] = VarE x
 tupE' xs = TupE $ map (Just . VarE) xs
-
--- | Turn function: (a,b) -> c into (Maybe a, Maybe b) -> Maybe c
-wrapMaybe :: Int -> ExpQ -> ExpQ
-wrapMaybe n f = return $ LamE [tupP' vars] [| |]
-  where
-    vars = map (\i -> mkName $ "x" ++ show i) [1..n]

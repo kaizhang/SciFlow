@@ -71,8 +71,9 @@ instance Coordinator Remote where
     initiate coord = do
         getSelfPid >>= register "SciFlow_master"
         -- Kill idle worker periodically.
-        forever $ liftIO (threadDelay 10000000) >> killIdleWorkers
+        forever $ liftIO (threadDelay interval) >> killIdleWorkers
       where
+        interval = 60000000
         killIdleWorkers = liftIO (atomically getIdleWorkers) >>= \case
             Nothing -> return ()
             Just (workers, pool) -> do

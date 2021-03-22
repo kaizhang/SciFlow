@@ -80,20 +80,24 @@ execFlow localNode coord store selection sciflow = eval (AsyncA . runFlow') $ _f
         Just s -> if _job_name job `S.member` s
             then run
             --else const $ throwError EarlyStopped
-            else const $ return undefined
+            else const $ return $ error $ show $ _job_name job
       where
         run = runJob localNode coord store (_function_table sciflow) job
-    runFlow' (UStep fun) = \i -> handleAll cleanUp $ lift $ lift $ fun i
+    runFlow' (UStep jn fun) = case selection of
+        Nothing -> \i -> handleAll cleanUp $ lift $ lift $ fun i
+        Just s -> if jn `S.member` s
+            then \i -> handleAll cleanUp $ lift $ lift $ fun i
+            else const $ return $ error $ show jn
       where
         cleanUp (SomeException ex) = do
             errorS $ "Failed: " <> show ex
             throwError Errored
 {-# INLINE execFlow #-}
 
-getDependencies :: G.Gr (Maybe NodeLabel) () -> [T.Text] -> S.HashSet T.Text
-getDependencies gr ids = S.map fromJust $ S.filter isJust $ S.map f $ go S.empty $ map hash ids
+getDependencies :: G.Gr NodeLabel () -> [T.Text] -> S.HashSet T.Text
+getDependencies gr ids = S.map f $ go S.empty $ map hash ids
   where
-    f i = fmap _label $ fromJust $ G.lab gr i
+    f i = _label $ fromJust $ G.lab gr i
     go acc [] = acc 
     go acc xs = go (foldl' (flip S.insert) acc xs) parents
       where

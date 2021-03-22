@@ -35,12 +35,13 @@ import Language.Haskell.TH.Syntax (Lift)
 data SciFlow env = SciFlow
     { _flow :: Free (Flow env) () ()
     , _function_table :: FunctionTable
-    , _graph :: G.Gr (Maybe NodeLabel) ()}
+    , _graph :: G.Gr NodeLabel ()}
 
 data NodeLabel = NodeLabel
     { _label :: T.Text
     , _descr :: T.Text
     , _parallel :: Bool
+    , _uncached :: Bool
     } deriving (Show, Generic, Lift)
 
 -- | The function table that can be sent to remote.
@@ -74,14 +75,14 @@ data Action env i o where
 -- | Free arrow side effect.
 data Flow env i o where
     Step :: (Binary i, Binary o) => Job env i o -> Flow env i o   -- ^ A cached step
-    UStep :: (i -> Env env o) -> Flow env i o   -- ^ An uncached step
+    UStep :: T.Text -> (i -> Env env o) -> Flow env i o   -- ^ An uncached step
 
 step :: (Binary i, Binary o) => Job env i o -> Free (Flow env) i o
 step job = effect $ Step job
 {-# INLINE step #-}
 
-ustep :: (i -> Env env o) -> Free (Flow env) i o
-ustep job = effect $ UStep job
+ustep :: T.Text -> (i -> Env env o) -> Free (Flow env) i o
+ustep nid job = effect $ UStep nid job
 {-# INLINE ustep #-}
 
 -- | Computational resource
