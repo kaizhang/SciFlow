@@ -26,13 +26,14 @@ import Control.Workflow.DataStore
 data Run a where
     Run :: Coordinator coord =>
         { decodeConfig :: (String -> Int -> FilePath -> IO (Config coord))
-        , dbPath :: FilePath
         , configFile :: FilePath
+        , selection :: Maybe [T.Text]
+        , force :: Bool
         , useCloud :: Bool
+        , nThread :: Maybe Int
+        , dbPath :: FilePath
         , serverAddr :: Maybe String
         , serverPort :: Maybe Int
-        , selection :: Maybe [T.Text]
-        , nThread :: Maybe Int
         } -> Run (Config coord)
 
 instance IsCommand (Run config) where
@@ -41,6 +42,7 @@ instance IsCommand (Run config) where
         port <- case serverPort of
             Nothing -> getFreePort
             Just p -> return p
+        deleteSteps
         if useCloud then runCloud env port else runLocal env port
       where
         runLocal env port = withCoordinator (LocalConfig $ fromMaybe 1 nThread) $ \coord ->
@@ -62,23 +64,39 @@ instance IsCommand (Run config) where
                 Right transport -> withCoordinator config $ \coord ->
                     withStore dbPath $ \store -> runSciFlow coord transport
                         store resource selection env wf
+        deleteSteps
+            | force = case selection of
+                Nothing -> error "\"--force\" must be used together with \"--select\""
+                Just selected -> withStore dbPath $ \store -> mapM_ (delItems store) selected
+            | otherwise = return ()
 
 run :: Coordinator coord
     => (String -> Int -> FilePath -> IO (Config coord))  -- ^ config reader
     -> Parser Command
 run f1 = fmap Command $ Run <$> pure f1
     <*> strOption
-        ( long "db-path"
-       <> value "sciflow.db"
-       <> help "Path to the workflow cache file"
-       <> metavar "DB_PATH" )
-    <*> strOption
         ( long "config"
        <> help "Workflow configuration file"
        <> metavar "CONFIG_PATH" )
+    <*> (optional . option (T.splitOn "," . T.pack <$> str))
+        ( long "select"
+       <> metavar "STEP1,STEP2"
+       <> help "Run only selected nodes")
+    <*> switch
+        ( long "force"
+       <> help "Force rerun the selected steps. Must be used with \"--select\"" )
     <*> switch
         ( long "cloud"
        <> help "Use distributed computing" )
+    <*> (optional . option auto)
+        ( short 'n'
+       <> help "The number of parallel threads/jobs"
+       <> metavar "JOBS" )
+    <*> strOption
+        ( long "db-path"
+       <> value "sciflow.db"
+       <> help "Path to the workflow cache file. (default: sciflow.db)"
+       <> metavar "DB_PATH" )
     <*> (optional . strOption)
         ( long "master-ip"
        <> help "The ip address of the master server. The default uses the hostname"
@@ -88,14 +106,6 @@ run f1 = fmap Command $ Run <$> pure f1
        <> short 'p'
        <> help "The port number"
        <> metavar "PORT" )
-    <*> (optional . option (T.splitOn "," . T.pack <$> str))
-        ( long "select"
-       <> metavar "STEP1,STEP2"
-       <> help "Run only selected nodes")
-    <*> (optional . option auto)
-        ( short 'n'
-       <> help "The number of parallel threads/jobs"
-       <> metavar "JOBS" )
 
 instance FromJSON Resource where
     parseJSON = withObject "Resource" $ \v -> Resource

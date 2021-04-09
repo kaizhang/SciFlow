@@ -26,17 +26,14 @@ import qualified Data.HashSet as S
 import Data.Maybe
 import Data.Hashable (hash)
 import Control.Exception (try, SomeException(..))
-import Control.Monad.Except (ExceptT, throwError, runExceptT)
-import Control.Monad.Catch (SomeException(..), handleAll, catchAll)
+import Control.Monad.Catch (handleAll)
 
 import Control.Workflow.Main.Types
 import Control.Workflow.DataStore
 import Control.Workflow.Types
 
-import Debug.Trace
-
 data Show' = Show'
-    { stepName :: Maybe T.Text
+    { stepName :: T.Text
     , dbPath :: FilePath }
 
 instance IsCommand Show' where
@@ -44,14 +41,12 @@ instance IsCommand Show' where
         Nothing -> return ()
         Just env -> do
             cache <- newMVar M.empty
-            let selection = fmap (getDependencies (_graph flow)) stepName
-                fun = showFlow cache selection store flow
+            let selection = getDependencies (_graph flow) stepName
+                fun = showFlow cache (Just selection) store flow
             _ <- liftIO $ flip runReaderT env $ runExceptT $ runAsyncA fun ()
             takeMVar cache >>= printCache . M.filterWithKey f
       where
-        f k _ = case stepName of
-            Nothing -> True
-            Just nm -> _name k == nm
+        f k _ = _name k == stepName
     
 printCache :: M.HashMap Key T.Text -> IO ()
 printCache cache = forM_ records $ \(k, x) -> do
@@ -63,7 +58,7 @@ printCache cache = forM_ records $ \(k, x) -> do
 
 show' :: Parser Command
 show' = fmap Command $ Show'
-    <$> (optional . strArgument)
+    <$> strArgument
         ( metavar "STEP"
        <> help "The name of the step" ) 
     <*> strOption
