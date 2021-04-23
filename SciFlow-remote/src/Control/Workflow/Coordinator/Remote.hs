@@ -187,7 +187,7 @@ spawnWorker config wc = do
         cwd <- getCurrentDirectory
         hPutStrLn h $ "#!/bin/sh"
         hPutStrLn h $ "cd " <> cwd
-        hPutStrLn h $ unwords $ "master_id=" <> procName : exe : args
+        hPutStrLn h $ unwords $ "master_id=" <> procName : exe : (args <> multiThread)
         hClose h
         setPermissions script emptyPermissions {readable=True, executable=True}
 
@@ -201,6 +201,9 @@ spawnWorker config wc = do
     return $ Worker pid Idle wc
   where
     (exe, args) = _cmd config
+    multiThread = case wc >>= _num_cpu of
+        Nothing -> []
+        Just n -> if n > 1 then ["+RTS", "-N" <> show n] else []
     params = case wc >>= _submit_params of
         Nothing -> _remote_parameters config
         p -> p
