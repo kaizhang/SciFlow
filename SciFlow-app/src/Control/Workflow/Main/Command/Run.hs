@@ -13,8 +13,12 @@ import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParamet
 import Control.Workflow.Interpreter.Exec
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
+import qualified Data.ByteString.Char8 as B
 import Network.HostName (getHostName)
 import Network.Socket.Free (getFreePort)
+import qualified Dhall.Yaml as D
+import Data.List (isSuffixOf)
 
 import Control.Workflow.Main.Types
 import Control.Workflow.Coordinator
@@ -38,13 +42,20 @@ data Run a where
 
 instance IsCommand (Run config) where
     runCommand Run{..} wf = do
-        env <- decodeFileThrow configFile
+        cfgFl <- getConfigFile
+        env <- decodeFileThrow cfgFl
         port <- case serverPort of
             Nothing -> getFreePort
             Just p -> return p
         deleteSteps
-        if useCloud then runCloud env port else runLocal env port
+        if useCloud then runCloud env port cfgFl else runLocal env port
       where
+        getConfigFile = if ".dhall" `isSuffixOf` configFile
+            then do
+                let output = configFile <> ".yaml"
+                T.readFile configFile >>= D.dhallToYaml D.defaultOptions Nothing >>= B.writeFile output
+                return output
+            else return configFile
         runLocal env port = withCoordinator (LocalConfig $ fromMaybe 1 nThread) $ \coord ->
             createTransport (defaultTCPAddr "localhost" (show port))
             defaultTCPParameters >>= \case
@@ -52,13 +63,13 @@ instance IsCommand (Run config) where
                 Right transport -> withStore dbPath $ \store ->
                     runSciFlow coord transport store
                         (ResourceConfig M.empty) selection env wf
-        runCloud env port = do
-            resource <- decodeFileThrow configFile
+        runCloud env port cfg = do
+            resource <- decodeFileThrow cfg
             ip <- case serverAddr of
                 Nothing -> getHostName
                 Just x -> return x
             config <- setQueueSize (fromMaybe 10 nThread) <$>
-                decodeConfig ip port configFile
+                decodeConfig ip port cfg
             createTransport (defaultTCPAddr ip (show port)) defaultTCPParameters >>= \case
                 Left ex -> errorS $ show ex
                 Right transport -> withCoordinator config $ \coord ->
