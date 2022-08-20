@@ -20,8 +20,6 @@ module Control.Workflow.Language
     , queue
     , Node(..)
     , NodeAttributes
-
-    , THExp(..)
     ) where
 
 import Control.Arrow
@@ -30,7 +28,7 @@ import Control.Monad.State.Lazy (State)
 import qualified Data.HashMap.Strict as M
 import Control.Monad.State.Lazy (modify, execState)
 import Data.Maybe (isNothing)
-import           Language.Haskell.TH (ExpQ, Name, varE)
+import           Language.Haskell.TH (ExpQ)
 
 import Control.Workflow.Types (Resource(..))
 
@@ -71,12 +69,11 @@ queue :: Functor f
 queue x y = fmap (\newX -> y { _queue = newX }) (x (_queue y))
 {-# INLINE queue #-}
 
-mkNode :: THExp q
-       => q        -- ^ Template Haskell expression representing
+mkNode :: ExpQ        -- ^ Template Haskell expression representing
                    -- functions with type @a -> IO b@.
        -> State NodeAttributes ()
        -> Node
-mkNode fun attrSetter = Node (mkExp fun) res False $ _doc attr
+mkNode fun attrSetter = Node fun res False $ _doc attr
   where
     res | isNothing core && isNothing mem && isNothing (_queue attr) = Nothing
         | otherwise = Just $ Resource core mem $ _queue attr
@@ -101,20 +98,18 @@ type Builder = State Workflow
 
 -- | Define an uncached step for pure lightweight computation. Such steps will
 -- not be saved and will be run each time the workflow is executed.
-uNode :: THExp q
-      => T.Text   -- ^ Node id
-      -> q        -- ^ functions with type @a -> b@.
+uNode :: T.Text   -- ^ Node id
+      -> ExpQ        -- ^ functions with type @a -> b@.
       -> Builder ()
 uNode nid f = modify $ \wf ->
-    wf{ _nodes = M.insertWith errMsg nid (UNode $ mkExp f) $ _nodes wf }
+    wf{ _nodes = M.insertWith errMsg nid (UNode f) $ _nodes wf }
   where
     errMsg = error $ "Duplicated nodes: " <> T.unpack nid
 {-# INLINE uNode #-}
 
 -- | Define a step.
-node :: THExp q
-     => T.Text   -- ^ Node id
-     -> q        -- ^ Template Haskell expression representing
+node :: T.Text   -- ^ Node id
+     -> ExpQ        -- ^ Template Haskell expression representing
                  -- functions with type @a -> ReaderT env IO b@.
      -> State NodeAttributes ()   -- ^ Option setter
      -> Builder ()
@@ -127,9 +122,8 @@ node nid f attrSetter = modify $ \wf ->
 
 -- | Define a step that will be executed in parallel, i.e.,
 -- @a -> m b@ becomes @[a] -> m [b]@.
-nodePar :: THExp q
-        => T.Text   -- ^ Node id
-        -> q        -- ^ Template Haskell expression representing
+nodePar :: T.Text   -- ^ Node id
+        -> ExpQ        -- ^ Template Haskell expression representing
                     -- functions with type @a -> ReaderT env IO b@.
         -> State NodeAttributes ()
         -> Builder ()
@@ -175,12 +169,3 @@ namespace prefix builder = modify (st <>)
         in Workflow nodes parents
     add x = prefix <> "_" <> x
 {-# INLINE namespace #-}
-
-class THExp q where
-    mkExp :: q -> ExpQ
-
-instance THExp Name where
-    mkExp = varE
-
-instance THExp ExpQ where
-    mkExp = id
