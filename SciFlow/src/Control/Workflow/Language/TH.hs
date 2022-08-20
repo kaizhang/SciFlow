@@ -15,7 +15,6 @@ import qualified Data.HashMap.Strict as M
 import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Lazy (execState)
 import Data.Hashable (hash)
-import Data.Maybe (fromJust)
 
 import Control.Workflow.Language
 import Control.Workflow.Types
@@ -84,7 +83,7 @@ addSource :: Workflow -> Workflow
 addSource wf = execState builder wf
   where
     builder = do
-        uNode name [| \() -> return () |] 
+        uNode name ([| \() -> return () |] :: ExpQ)
         mapM_ (\x -> [name] ~> x) sources
     sources = filter (\x -> not $ x `M.member` _parents wf) $ M.keys $ _nodes wf
     name = "SciFlow_Source_Node_2xdj23"

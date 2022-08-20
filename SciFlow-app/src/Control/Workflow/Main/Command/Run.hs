@@ -12,6 +12,7 @@ import Data.Maybe (fromMaybe)
 import Network.Transport.TCP (createTransport, defaultTCPAddr, defaultTCPParameters)
 import Control.Workflow.Interpreter.Exec
 import qualified Data.HashMap.Strict as M
+import qualified Data.Aeson.KeyMap as K
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Data.ByteString.Char8 as B
@@ -126,7 +127,7 @@ instance FromJSON Resource where
 
 instance FromJSON ResourceConfig where
     parseJSON = withObject "ResourceConfig" $ \obj ->
-        return $ case M.lookup "resource" obj of
+        return $ case K.lookup "resource" obj of
             Nothing -> ResourceConfig M.empty
             Just res -> ResourceConfig $ case parseEither parseJSON res of
                 Left err -> error err

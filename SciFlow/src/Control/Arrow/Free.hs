@@ -45,6 +45,7 @@ import           Data.Function       (const, flip, ($))
 import           Data.List           (uncons)
 import           Data.Maybe          (maybe)
 import           Data.Tuple          (uncurry)
+import Data.Kind (Type)
 
 -- | A natural transformation on type constructors of two arguments.
 type x ~> y = forall a b. x a b -> y a b
@@ -56,7 +57,7 @@ type x ~> y = forall a b. x a b -> y a b
 -- | Small class letting us define `eval` and `effect` generally over
 --   multiple free structures
 class FreeArrowLike fal where
-  type Ctx fal :: (k -> k -> *) -> Constraint
+  type Ctx fal :: (k -> k -> Type) -> Constraint
   effect :: eff a b -> fal eff a b
   eval :: forall eff arr a b. ((Ctx fal) arr)
        => (eff ~> arr)
@@ -121,11 +122,11 @@ newtype Choice eff a b = Choice {
 }
 
 instance Category (Choice eff) where
-  id = Choice $ const id
+  id = Choice $ \_ -> id
   Choice f . Choice g = Choice $ \x -> f x . g x
 
 instance Arrow (Choice eff) where
-  arr a = Choice $ const $ arr a
+  arr a = Choice $ \_ -> arr a
   first (Choice a) = Choice $ \f -> first (a f)
   second (Choice a) = Choice $ \f -> second (a f)
   (Choice a) *** (Choice b) = Choice $ \f -> a f *** b f
